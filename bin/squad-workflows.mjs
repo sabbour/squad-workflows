@@ -37,6 +37,7 @@ const { positionals, values } = parseArgs({
     token: { type: 'string' },
     owner: { type: 'string' },
     repo: { type: 'string' },
+    force: { type: 'boolean' },
   },
   strict: false,
 });
@@ -47,7 +48,8 @@ function usage() {
   console.error(`Usage: squad-workflows <command> [options]
 
 Commands:
-  init              One-time repo setup (labels, config, instructions)
+  setup             Full guided setup (recommended)
+  init              Install files only (advanced)
   doctor            Health check
   estimate          Estimate an issue (S/M/L/XL)
   decompose         Decompose issue into waves
@@ -75,6 +77,10 @@ async function run() {
   const repoRoot = process.cwd();
 
   switch (command) {
+    case 'setup': {
+      const { runSetup } = await import(`${LIB_DIR}/setup.mjs`);
+      return runSetup(repoRoot, values);
+    }
     case 'init': {
       const { runInit } = await import(`${LIB_DIR}/init.mjs`);
       return runInit(repoRoot, values);
