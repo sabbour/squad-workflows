@@ -1,0 +1,37 @@
+{
+  "branchModel": {
+    "base": "dev",
+    "release": "main"
+  },
+  "estimates": {
+    "S": { "points": 1, "maxHours": 2 },
+    "M": { "points": 3, "maxHours": 8 },
+    "L": { "points": 8, "maxHours": 24, "mustDecompose": true },
+    "XL": { "points": 20, "maxHours": 80, "mustDecompose": true }
+  },
+  "designProposal": {
+    "requiredSections": [
+      "problem",
+      "approach",
+      "subtasks",
+      "files",
+      "security",
+      "docs",
+      "alternatives"
+    ],
+    "fastLaneLabels": ["estimate:S", "squad:chore-auto"]
+  },
+  "waves": {
+    "milestonePrefix": "Wave",
+    "requireDemoCriteria": true,
+    "maxIssueEstimate": "M"
+  },
+  "labels": {
+    "estimates": ["estimate:S", "estimate:M", "estimate:L", "estimate:XL"],
+    "fastLane": ["estimate:S", "squad:chore-auto"],
+    "designApprovals": ["architecture:approved", "security:approved", "codereview:approved"]
+  },
+  "board": {
+    "columns": ["Backlog", "Assigned", "In Progress", "In Review", "Approved", "Merged"]
+  }
+}

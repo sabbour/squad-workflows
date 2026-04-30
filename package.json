@@ -1,0 +1,50 @@
+{
+  "name": "@sabbour/squad-workflows",
+  "version": "0.1.0",
+  "description": "Issue-to-merge workflow orchestration for Squad agents. Codifies planning, design proposals, review ceremonies, merge gates, and wave-based delivery.",
+  "type": "module",
+  "bin": {
+    "squad-workflows": "./bin/squad-workflows.mjs"
+  },
+  "files": [
+    "bin/",
+    "extensions/",
+    "squad-workflows/SKILL.md",
+    ".squad/workflows/config.json.template",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:watch": "node --test --watch test/*.test.mjs",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "changeset publish"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
+  },
+  "optionalDependencies": {
+    "@sabbour/squad-identity": ">=1.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sabbour/squad-workflows.git"
+  },
+  "keywords": [
+    "squad",
+    "workflow",
+    "copilot",
+    "ceremony",
+    "agile",
+    "waves"
+  ]
+}
