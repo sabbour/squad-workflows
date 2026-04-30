@@ -202,3 +202,23 @@ These compose naturally. You can have:
 - dev → insiders: Automated sync on green build
 - dev → main: Manual merge when ready for stable release, then tag
 - Hotfixes: Branch from main as `hotfix/{slug}`, PR to dev, cherry-pick to main if urgent
+
+---
+
+## Merge-Check Approval Routing Rules
+
+When a PR author owns an approval domain, they cannot self-apply that approval label to satisfy merge routing. The merge-check exposes a `selfApprovalBlocks` list so the workflow can route the label to fallback reviewers instead.
+
+Default fallback chains:
+- `docs:approved` → `architecture`, `lead`, `codereview`
+- `architecture:approved` → `lead`, `codereview`
+- `security:approved` → `architecture`, `lead`
+- `codereview:approved` → `architecture`, `lead`
+
+Reviewer order matters. The first available fallback reviewer should review and apply the blocked label on behalf of the author-owned role.
+
+## Fast-Lane / chore-auto Scope
+
+`estimate:S` and `squad:chore-auto` are fast-lane labels, but their scope is intentionally narrow. They only relax changeset requirements and design-proposal requirements.
+
+They never bypass review approval gates. Architecture, security, docs, and code review approvals still apply unless a separate review exemption rule explicitly skips a specific approval.

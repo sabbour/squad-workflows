@@ -19,6 +19,16 @@ const DEFAULTS = {
     requiredSections: ['problem', 'approach', 'subtasks', 'files', 'security', 'docs', 'alternatives'],
     fastLaneLabels: ['estimate:S', 'squad:chore-auto'],
   },
+  approvalFallback: {
+    // When PR author matches a role that owns a required approval,
+    // these roles can review and apply the label on their behalf.
+    // Order matters — first available reviewer is preferred.
+    'docs:approved': ['architecture', 'lead', 'codereview'],
+    'architecture:approved': ['lead', 'codereview'],
+    'security:approved': ['architecture', 'lead'],
+    'codereview:approved': ['architecture', 'lead'],
+  },
+  fastLaneScope: ['changeset', 'design-proposal'],
   waves: {
     milestonePrefix: 'Wave',
     requireDemoCriteria: true,

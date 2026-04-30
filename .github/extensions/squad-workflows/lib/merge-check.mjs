@@ -2,7 +2,7 @@
  * Merge check — holistic pre-merge validation.
  */
 
-import { getPR, getIssueLabels } from './github-api.mjs';
+import { getPR } from './github-api.mjs';
 import { loadConfig, getExemptReviews } from './workflow-config.mjs';
 import { runCheckFeedback, runCheckCi } from './feedback.mjs';
 
@@ -76,19 +76,43 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
     passed.push('CI green');
   }
 
-  // 6. Check for changeset (look for .changeset/*.md files in PR diff)
   const files = await getPRFiles(owner, repo, pr, token);
   const filePaths = files.map((f) => f.filename);
 
   // Check review exemptions (e.g., docs-only PRs skip security review)
   const exemptReviews = getExemptReviews(config, filePaths);
-
-  // 6. Check for architecture:approved and security:approved labels (both required)
-  // Docs-only PRs are exempt from security gate (architecture still applies)
   const prLabels = (prData.labels || []).map((l) => l.name);
+  const fastLaneLabels = config.designProposal?.fastLaneLabels || [];
+  const fastLaneScope = config.fastLaneScope || [];
+  const fastLaneActive = prLabels.some((label) => fastLaneLabels.includes(label));
+  const roleOwnership = config.approvalFallback
+    ? Object.keys(config.approvalFallback).reduce((map, label) => {
+        map[label] = label.split(':')[0];
+        return map;
+      }, {})
+    : {};
+  const selfApprovalBlocks = Object.entries(roleOwnership)
+    .filter(([, role]) => matchesRoleLogin(prAuthor, role))
+    .map(([label]) => ({
+      label,
+      blockedAuthor: prAuthor,
+      fallbackReviewers: config.approvalFallback?.[label] || [],
+    }));
+
+  // 6. Review approval gates.
+  // squad:chore-auto and other fast-lane labels can only relax checks listed in
+  // config.fastLaneScope. They NEVER bypass architecture/security/docs/codereview
+  // approval gates, even when the PR is otherwise fast-lane eligible.
   const archApproved = prLabels.includes('architecture:approved');
   const secApproved = prLabels.includes('security:approved');
   const securityExempt = exemptReviews.includes('security:approved');
+
+  if (prLabels.includes('squad:chore-auto')) {
+    const scopeSummary = fastLaneScope.length > 0 ? fastLaneScope.join(', ') : 'no checks';
+    passed.push(`squad:chore-auto fast-lane scope: ${scopeSummary}; review approvals still required`);
+  } else if (fastLaneActive && fastLaneScope.length > 0) {
+    passed.push(`Fast-lane scope limited to: ${fastLaneScope.join(', ')}; review approvals still required`);
+  }
 
   if (!archApproved) {
     blockers.push({ check: 'architecture-approval', message: 'Missing architecture:approved label. Architecture review required.' });
@@ -106,13 +130,13 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
 
   // 7. Check for changeset (look for .changeset/*.md files in PR diff)
   const hasChangeset = files.some((f) => f.filename.startsWith('.changeset/') && f.filename.endsWith('.md'));
+  const canSkipChangeset = fastLaneScope.includes('changeset')
+    && (prLabels.includes('estimate:S') || prLabels.includes('squad:chore-auto'));
   if (!hasChangeset) {
-    // Check if exempt
-    const isChangesetExempt = prLabels.includes('estimate:S') || prLabels.includes('squad:chore-auto');
-    if (!isChangesetExempt) {
+    if (!canSkipChangeset) {
       blockers.push({ check: 'changeset', message: 'No changeset found. Run `npm run changeset` in the worktree.' });
     } else {
-      passed.push('Changeset exempt (fast-lane)');
+      passed.push('Changeset exempt (fast-lane scope)');
     }
   } else {
     passed.push('Changeset present');
@@ -126,6 +150,7 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
     blockers,
     passed,
     exemptReviews,
+    selfApprovalBlocks,
     summary: canMerge
       ? '✅ Ready to merge'
       : `❌ ${blockers.length} blocker(s) remaining`,
@@ -140,4 +165,10 @@ async function getPRReviews(owner, repo, pr, token) {
 async function getPRFiles(owner, repo, pr, token) {
   const { ghApi } = await import('./github-api.mjs');
   return ghApi(`/repos/${owner}/${repo}/pulls/${pr}/files`, { token });
+}
+
+function matchesRoleLogin(login, role) {
+  return typeof login === 'string' && typeof role === 'string'
+    ? login.toLowerCase().includes(role.toLowerCase())
+    : false;
 }
