@@ -4,7 +4,7 @@
  * Creates labels, writes config, patches instruction files.
  */
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -118,7 +118,26 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
     results.instructions.push('ralph/charter.md patched');
   }
 
-  // 5. Patch ceremonies.md
+  // 5. Patch all agent charters (excluding _alumni and scribe)
+  const agentsDir = join(repoRoot, '.squad', 'agents');
+  const EXCLUDED_AGENTS = new Set(['_alumni', 'scribe', 'ralph']);
+  if (existsSync(agentsDir)) {
+    const agentDirs = readdirSync(agentsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory() && !EXCLUDED_AGENTS.has(d.name));
+    for (const dir of agentDirs) {
+      const charterPath = join(agentsDir, dir.name, 'charter.md');
+      if (existsSync(charterPath)) {
+        const patched = patchInstructionBlock(
+          readFileSync(charterPath, 'utf-8'),
+          buildAgentCharterBlock()
+        );
+        writeFileSync(charterPath, patched);
+        results.instructions.push(`agents/${dir.name}/charter.md patched`);
+      }
+    }
+  }
+
+  // 6. Patch ceremonies.md
   const ceremoniesPath = join(repoRoot, '.squad', 'ceremonies.md');
   if (existsSync(ceremoniesPath)) {
     const patched = patchInstructionBlock(
@@ -129,7 +148,7 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
     results.instructions.push('ceremonies.md patched');
   }
 
-  // 6. Patch issue-lifecycle.md
+  // 7. Patch issue-lifecycle.md
   const lifecyclePath = join(repoRoot, '.squad', 'issue-lifecycle.md');
   if (existsSync(lifecyclePath)) {
     const patched = patchInstructionBlock(
@@ -167,6 +186,9 @@ Large features must be decomposed into waves (GitHub milestones). Each wave is i
 - Base branch: \`${config.branchModel.base}\`
 - Branch naming: \`squad/{issue-number}-{kebab-case-slug}\`
 - Always use worktrees: \`git worktree add .worktrees/{slug} -b squad/{issue}-{slug} origin/${config.branchModel.base}\`
+
+### Pre-Push Validation
+Before pushing any branch, run \`npm test\` (and \`npm run build\` if a build script exists in package.json). Do NOT push code that fails tests or build.
 ${INSTRUCTIONS_MARKER_END}`;
 }
 
@@ -203,6 +225,15 @@ export function buildRalphCharterBlock() {
 - **Bot identity required for all writes.** Read \`.copilot/skills/gh-auth-isolation/SKILL.md\`. Use the squad_workflows push/create_pr tools or the bot token inline form. Never fall back to ambient \`gh\` auth.
 - **Skip, don't stall.** If a PR has unresolvable blockers (merge conflicts requiring human judgment, missing human-only approval, repeated CI failures after 2 fix attempts), skip it, log why, and move to the next.
 - **Wave boundaries are a valid stop point.** When a milestone completes, pause and report. Do not continue into the next wave without acknowledgment.
+${INSTRUCTIONS_MARKER_END}`;
+}
+
+export function buildAgentCharterBlock() {
+  return `${INSTRUCTIONS_MARKER_START}
+## Workflow Rules (squad-workflows)
+
+### Pre-Push Validation
+Before pushing any branch, run \`npm test\` (and \`npm run build\` if a build script exists in package.json). Do NOT push code that fails tests or build.
 ${INSTRUCTIONS_MARKER_END}`;
 }
 

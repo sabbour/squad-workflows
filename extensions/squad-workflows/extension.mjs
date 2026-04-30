@@ -517,6 +517,7 @@ const session = await joinSession({
           dryRun: { type: 'boolean', description: 'Preview without writing files' },
           force: { type: 'boolean', description: 'Overwrite existing workflow file' },
         },
+        required: [],
       },
       handler: jsonHandler(async ({ dryRun, force }) => {
         const { scaffoldChangesetRelease } = await lib('scaffold-changeset-release.mjs');
