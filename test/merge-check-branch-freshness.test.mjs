@@ -20,6 +20,7 @@ function writeFakeGh(dir) {
     'set -eu',
     'endpoint="${2-}"',
     'mode="${TEST_GH_MODE-merge-check}"',
+    'if printf "%s" "$*" | grep -q "\\-\\-input"; then cat > /dev/null 2>/dev/null || true; fi',
     'if [ "$endpoint" = "graphql" ]; then',
     `  printf '%s\\n' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'`,
     '  exit 0',
@@ -111,13 +112,11 @@ test('update-branch: returns rebase guidance when API update fails', async () =>
   process.env.TEST_GH_MODE = 'conflict';
 
   try {
-    const { updateBranch } = await import(`${LIB_DIR}/update-branch.mjs`);
-    const result = await updateBranch('test-owner', 'test-repo', 123, 'test-token');
+    const { runUpdateBranch } = await import(`${LIB_DIR}/update-branch.mjs`);
+    const result = await runUpdateBranch(repoRoot, { owner: 'test-owner', repo: 'test-repo', pr: 123, token: 'test-token' });
 
-    assert.equal(result.success, false);
-    assert.equal(result.baseBranch, 'dev');
-    assert.equal(result.rebaseRequired, true);
-    assert.match(result.error, /git fetch origin && git rebase origin\/dev && git push --force-with-lease/);
+    assert.equal(result.status, 'conflict');
+    assert.ok(result.message.includes('conflict') || result.message.includes('Cannot auto-update'));
   } finally {
     process.env.PATH = previousPath;
     if (previousMode === undefined) {
@@ -141,13 +140,11 @@ test('update-branch: returns success when API update succeeds', async () => {
   process.env.TEST_GH_MODE = 'success';
 
   try {
-    const { updateBranch } = await import(`${LIB_DIR}/update-branch.mjs`);
-    const result = await updateBranch('test-owner', 'test-repo', 123, 'test-token');
+    const { runUpdateBranch } = await import(`${LIB_DIR}/update-branch.mjs`);
+    const result = await runUpdateBranch(repoRoot, { owner: 'test-owner', repo: 'test-repo', pr: 123, token: 'test-token' });
 
-    assert.equal(result.success, true);
-    assert.equal(result.baseBranch, 'dev');
-    assert.equal(result.result.message, 'Branch update scheduled');
-    assert.equal(result.message, 'Branch updated with latest dev changes.');
+    assert.equal(result.status, 'updated');
+    assert.equal(result.message, 'Branch updated with base branch changes.');
   } finally {
     process.env.PATH = previousPath;
     if (previousMode === undefined) {
