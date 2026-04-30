@@ -66,6 +66,9 @@ npm install -g @sabbour/squad-workflows
 # One-time setup in your repo
 squad-workflows init
 
+# Scaffold the changeset release workflow
+squad-workflows scaffold-release
+
 # Health check
 squad-workflows doctor
 
@@ -77,6 +80,9 @@ squad-workflows decompose --issue 42
 
 # Check workflow status
 squad-workflows status --issue 42
+
+# Release a completed wave
+squad-workflows release-wave --milestone "Wave 1"
 ```
 
 ## Tools
@@ -113,6 +119,11 @@ When installed as a Copilot CLI extension, the following tools are available:
 | `squad_workflows_merge_check` | Pre-merge validation: approvals + threads + CI + changeset |
 | `squad_workflows_merge` | Squash merge + cleanup + wave completion check |
 | `squad_workflows_release_wave` | Release a completed wave: validate, version, close milestone, post summary |
+
+### Scaffold
+| Tool | Description |
+|------|-------------|
+| `squad_workflows_scaffold_release` | Generate a manually-dispatched changeset release workflow into `.github/workflows/` |
 
 ### Utility
 | Tool | Description |

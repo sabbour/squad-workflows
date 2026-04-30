@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- Add scaffold-release tool for on-demand changeset-based releases
+
+  - New `squad_workflows_scaffold_release` tool and `scaffold-release` CLI command
+  - Generates a manually-dispatched GitHub Actions workflow (`squad-changeset-release.yml`)
+  - Workflow runs `changeset version` + `changeset publish` with dual publish to npmjs and GitHub Packages
+  - Added `labels.types` and `labels.priorities` to workflow config for taxonomy reference
+  - Leaves core upstream Squad workflows untouched — only scaffolds what's driven by config
+
 All notable changes to this project will be documented in this file.
 
 ## 1.0.0
