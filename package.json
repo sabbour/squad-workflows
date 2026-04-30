@@ -1,6 +1,6 @@
 {
   "name": "@sabbour/squad-workflows",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Issue-to-merge workflow orchestration for Squad agents. Codifies planning, design proposals, review ceremonies, merge gates, and wave-based delivery.",
   "type": "module",
   "bin": {
