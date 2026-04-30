@@ -1,6 +1,11 @@
-# squad-workflows
+# @sabbour/squad-workflows
 
-Issue-to-merge workflow orchestration for Squad agents.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+> [!WARNING]
+> **Experimental** — This project is under active development. APIs, config schemas, and CLI commands may change without notice.
+
+> Issue-to-merge workflow orchestration for [Squad](https://github.com/bradygaster/squad) agents.
 
 Codifies the entire development lifecycle — from planning and estimation through
 design proposals, review ceremonies, merge gates, and wave-based incremental
@@ -108,6 +113,16 @@ Issues labeled `estimate:S` or `squad:chore-auto` skip Design Proposal and Desig
 ## Configuration
 
 Config lives at `.squad/workflows/config.json`. Created by `squad-workflows init`.
+
+## Related
+
+`squad-workflows` is part of a family of Squad extensions:
+
+| Package | Purpose |
+|---------|---------|
+| [`@sabbour/squad-identity`](https://github.com/sabbour/squad-identity) | GitHub App bot-identity governance — every agent write is attributed to a dedicated bot account |
+| [`@sabbour/squad-reviews`](https://github.com/sabbour/squad-reviews) | Config-driven review governance — PR/issue routing, feedback threads, review gates |
+| **`@sabbour/squad-workflows`** | Issue-to-merge lifecycle — estimation, waves, design ceremonies, merge gates *(this repo)* |
 
 ## License
 
