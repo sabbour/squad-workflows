@@ -8,20 +8,19 @@ import { approveAll } from '@github/copilot-sdk';
 import { joinSession } from '@github/copilot-sdk/extension';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LIB_DIR = join(__dirname, 'lib');
 
 function resolveRepoRoot() {
-  // Walk up from extension dir: extensions/squad-workflows/ → .github or repo root
-  let dir = join(__dirname, '..', '..');
-  return dir;
+  // Walk up from extension dir: .github/extensions/squad-workflows/ → repo root
+  const candidate = join(__dirname, '..', '..', '..');
+  if (existsSync(join(candidate, '.squad')) || existsSync(join(candidate, 'package.json'))) {
+    return candidate;
+  }
+  return candidate;
 }
-
-const REPO_ROOT = resolveRepoRoot();
-
-// Lazy-load lib modules to keep startup fast
-const lib = (name) => import(join(LIB_DIR, name));
 
 function jsonHandler(fn) {
   return async (params = {}) => {
@@ -36,6 +35,56 @@ function jsonHandler(fn) {
   };
 }
 
+const REPO_ROOT = resolveRepoRoot();
+
+// Lazy-load lib modules to keep startup fast
+const lib = (name) => import(join(LIB_DIR, name));
+
+// ---------------------------------------------------------------------------
+// Token auto-resolution via squad-identity lease system
+// ---------------------------------------------------------------------------
+const IDENTITY_LIB = join(__dirname, '..', 'squad-identity', 'lib');
+
+let _leaseState = null; // { scopeId, role, deadlineUnix, remainingOps }
+
+async function getToken(roleSlug) {
+  const role = roleSlug || process.env.ROLE_SLUG || 'lead';
+
+  // Check if current lease is still usable (>60s remaining, >0 ops)
+  if (_leaseState && _leaseState.role === role) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (_leaseState.remainingOps > 0 && nowSec < _leaseState.deadlineUnix - 60) {
+      try {
+        const { exchangeLease } = await import(join(IDENTITY_LIB, 'token-lease-store.mjs'));
+        const result = exchangeLease(_leaseState.scopeId, role);
+        _leaseState.remainingOps = result.remainingOps;
+        return result.token;
+      } catch {
+        // Lease expired/exhausted — fall through to create new one
+        _leaseState = null;
+      }
+    } else {
+      _leaseState = null;
+    }
+  }
+
+  // Resolve a fresh token and create a new lease
+  const { resolveToken } = await import(join(IDENTITY_LIB, 'resolve-token.mjs'));
+  const token = await resolveToken(REPO_ROOT, role);
+  if (!token) {
+    throw new Error(`Could not resolve token for role "${role}". Run squad_identity_doctor for diagnostics.`);
+  }
+
+  const { createLease, exchangeLease } = await import(join(IDENTITY_LIB, 'token-lease-store.mjs'));
+  const lease = createLease({ role, token, maxOps: 500, maxTimeSec: 3500 });
+  _leaseState = { scopeId: lease.scopeId, role, deadlineUnix: lease.deadlineUnix, remainingOps: lease.remainingOps };
+
+  // Exchange immediately to get the token back (first op)
+  const result = exchangeLease(lease.scopeId, role);
+  _leaseState.remainingOps = result.remainingOps;
+  return result.token;
+}
+
 const session = await joinSession({
   onPermissionRequest: approveAll,
   tools: [
@@ -47,14 +96,14 @@ const session = await joinSession({
       parameters: {
         type: 'object',
         properties: {
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
           force: { type: 'boolean', description: 'Overwrite existing config if present' },
         },
-        required: ['token', 'owner', 'repo'],
+        required: ['owner', 'repo'],
       },
-      handler: jsonHandler(async ({ token, owner, repo, force }) => {
+      handler: jsonHandler(async ({ owner, repo, force }) => {
+        const token = await getToken();
         const { runInit } = await lib('init.mjs');
         return runInit(REPO_ROOT, { token, owner, repo, force });
       }),
@@ -66,13 +115,13 @@ const session = await joinSession({
       parameters: {
         type: 'object',
         properties: {
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token).' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
         required: [],
       },
-      handler: jsonHandler(async ({ token, owner, repo }) => {
+      handler: jsonHandler(async ({ owner, repo }) => {
+        const token = await getToken();
         const { runDoctor } = await lib('doctor.mjs');
         return runDoctor(REPO_ROOT, { token, owner, repo });
       }),
@@ -87,13 +136,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           issue: { type: 'number', description: 'Issue number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['issue', 'token', 'owner', 'repo'],
+        required: ['issue', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ issue, token, owner, repo }) => {
+      handler: jsonHandler(async ({ issue, owner, repo }) => {
+        const token = await getToken();
         const { runEstimate } = await lib('estimate.mjs');
         return runEstimate(REPO_ROOT, { issue, token, owner, repo });
       }),
@@ -131,13 +180,13 @@ const session = await joinSession({
               required: ['title', 'demoCriteria', 'issues'],
             },
           },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['issue', 'waves', 'token', 'owner', 'repo'],
+        required: ['issue', 'waves', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ issue, waves, token, owner, repo }) => {
+      handler: jsonHandler(async ({ issue, waves, owner, repo }) => {
+        const token = await getToken();
         const { runDecompose } = await lib('decompose.mjs');
         return runDecompose(REPO_ROOT, { issue, waves, token, owner, repo });
       }),
@@ -167,13 +216,13 @@ const session = await joinSession({
             },
             required: ['problem', 'estimate', 'approach', 'subtasks', 'files', 'security', 'docs', 'alternatives'],
           },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['issue', 'proposal', 'token', 'owner', 'repo'],
+        required: ['issue', 'proposal', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ issue, proposal, token, owner, repo }) => {
+      handler: jsonHandler(async ({ issue, proposal, owner, repo }) => {
+        const token = await getToken();
         const { runPostDesignProposal } = await lib('design-proposal.mjs');
         return runPostDesignProposal(REPO_ROOT, { issue, proposal, token, owner, repo });
       }),
@@ -186,13 +235,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           issue: { type: 'number', description: 'Issue number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['issue', 'token', 'owner', 'repo'],
+        required: ['issue', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ issue, token, owner, repo }) => {
+      handler: jsonHandler(async ({ issue, owner, repo }) => {
+        const token = await getToken();
         const { runCheckDesignApproval } = await lib('design-review.mjs');
         return runCheckDesignApproval(REPO_ROOT, { issue, token, owner, repo });
       }),
@@ -207,13 +256,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           pr: { type: 'number', description: 'Pull request number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['pr', 'token', 'owner', 'repo'],
+        required: ['pr', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ pr, token, owner, repo }) => {
+      handler: jsonHandler(async ({ pr, owner, repo }) => {
+        const token = await getToken();
         const { runCheckFeedback } = await lib('feedback.mjs');
         return runCheckFeedback(REPO_ROOT, { pr, token, owner, repo });
       }),
@@ -226,13 +275,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           pr: { type: 'number', description: 'Pull request number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['pr', 'token', 'owner', 'repo'],
+        required: ['pr', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ pr, token, owner, repo }) => {
+      handler: jsonHandler(async ({ pr, owner, repo }) => {
+        const token = await getToken();
         const { runCheckCi } = await lib('feedback.mjs');
         return runCheckCi(REPO_ROOT, { pr, token, owner, repo });
       }),
@@ -247,13 +296,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           pr: { type: 'number', description: 'Pull request number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['pr', 'token', 'owner', 'repo'],
+        required: ['pr', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ pr, token, owner, repo }) => {
+      handler: jsonHandler(async ({ pr, owner, repo }) => {
+        const token = await getToken();
         const { runMergeCheck } = await lib('merge-check.mjs');
         return runMergeCheck(REPO_ROOT, { pr, token, owner, repo });
       }),
@@ -266,13 +315,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           pr: { type: 'number', description: 'Pull request number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['pr', 'token', 'owner', 'repo'],
+        required: ['pr', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ pr, token, owner, repo }) => {
+      handler: jsonHandler(async ({ pr, owner, repo }) => {
+        const token = await getToken();
         const { runMerge } = await lib('merge.mjs');
         return runMerge(REPO_ROOT, { pr, token, owner, repo });
       }),
@@ -287,13 +336,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           issue: { type: 'number', description: 'Issue number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['issue', 'token', 'owner', 'repo'],
+        required: ['issue', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ issue, token, owner, repo }) => {
+      handler: jsonHandler(async ({ issue, owner, repo }) => {
+        const token = await getToken();
         const { runFastLane } = await lib('fast-lane.mjs');
         return runFastLane(REPO_ROOT, { issue, token, owner, repo });
       }),
@@ -307,13 +356,13 @@ const session = await joinSession({
         properties: {
           issue: { type: 'number', description: 'Issue number' },
           targetColumn: { type: 'string', description: 'Target column name (e.g., "In Progress", "In Review")' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['issue', 'token', 'owner', 'repo'],
+        required: ['issue', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ issue, targetColumn, token, owner, repo }) => {
+      handler: jsonHandler(async ({ issue, targetColumn, owner, repo }) => {
+        const token = await getToken();
         const { runBoardSync } = await lib('board-sync.mjs');
         return runBoardSync(REPO_ROOT, { issue, targetColumn, token, owner, repo });
       }),
@@ -326,13 +375,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           milestone: { type: 'string', description: 'Specific milestone title (optional — shows all waves if omitted)' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['token', 'owner', 'repo'],
+        required: ['owner', 'repo'],
       },
-      handler: jsonHandler(async ({ milestone, token, owner, repo }) => {
+      handler: jsonHandler(async ({ milestone, owner, repo }) => {
+        const token = await getToken();
         const { runWaveStatus } = await lib('wave-status.mjs');
         return runWaveStatus(REPO_ROOT, { milestone, token, owner, repo });
       }),
@@ -345,13 +394,13 @@ const session = await joinSession({
         type: 'object',
         properties: {
           issue: { type: 'number', description: 'Issue number' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['issue', 'token', 'owner', 'repo'],
+        required: ['issue', 'owner', 'repo'],
       },
-      handler: jsonHandler(async ({ issue, token, owner, repo }) => {
+      handler: jsonHandler(async ({ issue, owner, repo }) => {
+        const token = await getToken();
         const { runStatus } = await lib('status.mjs');
         return runStatus(REPO_ROOT, { issue, token, owner, repo });
       }),
@@ -367,13 +416,13 @@ const session = await joinSession({
         properties: {
           milestone: { type: 'string', description: 'Milestone title (optional — picks first complete wave if omitted)' },
           dryRun: { type: 'boolean', description: 'Preview without making changes' },
-          token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
-        required: ['token', 'owner', 'repo'],
+        required: ['owner', 'repo'],
       },
-      handler: jsonHandler(async ({ milestone, dryRun, token, owner, repo }) => {
+      handler: jsonHandler(async ({ milestone, dryRun, owner, repo }) => {
+        const token = await getToken();
         const { runReleaseWave } = await lib('release-wave.mjs');
         return runReleaseWave(REPO_ROOT, { milestone, dryRun, token, owner, repo });
       }),
