@@ -31,6 +31,12 @@ const DEFAULTS = {
     types: ['type:feature', 'type:bug', 'type:spike', 'type:docs', 'type:chore', 'type:epic'],
     priorities: ['priority:p0', 'priority:p1', 'priority:p2'],
   },
+  reviewExemptions: {
+    docsOnly: {
+      paths: ['docs/**', '**/*.md', '.squad/**', '.changeset/**'],
+      skipReviews: ['security:approved'],
+    },
+  },
   board: {
     columns: ['Backlog', 'Assigned', 'In Progress', 'In Review', 'Approved', 'Merged'],
   },
@@ -92,6 +98,44 @@ export function mustDecompose(config, estimate) {
 export function isFastLane(config, issueLabels) {
   const fastLaneLabels = config.designProposal?.fastLaneLabels || [];
   return issueLabels.some((l) => fastLaneLabels.includes(l));
+}
+
+/**
+ * Get reviews that can be skipped based on changed file paths.
+ * Returns an array of approval labels that are exempt (e.g., ['security:approved']).
+ */
+export function getExemptReviews(config, changedPaths) {
+  const exemptions = config.reviewExemptions || {};
+  const exempt = new Set();
+
+  for (const [, rule] of Object.entries(exemptions)) {
+    const patterns = rule.paths || [];
+    if (patterns.length === 0) continue;
+
+    // Check if ALL changed files match at least one exemption pattern
+    const allMatch = changedPaths.every((filePath) =>
+      patterns.some((pattern) => matchGlob(filePath, pattern))
+    );
+
+    if (allMatch && changedPaths.length > 0) {
+      for (const skip of rule.skipReviews || []) {
+        exempt.add(skip);
+      }
+    }
+  }
+
+  return [...exempt];
+}
+
+/**
+ * Simple glob matching (supports ** and * wildcards).
+ */
+function matchGlob(filePath, pattern) {
+  const regex = pattern
+    .replace(/\*\*/g, '{{GLOBSTAR}}')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\{\{GLOBSTAR\}\}/g, '.*');
+  return new RegExp(`^${regex}$`).test(filePath);
 }
 
 function deepMerge(target, source) {
