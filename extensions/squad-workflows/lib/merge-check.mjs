@@ -83,12 +83,33 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
   // Check review exemptions (e.g., docs-only PRs skip security review)
   const exemptReviews = getExemptReviews(config, filePaths);
 
+  // 6. Check for architecture:approved and security:approved labels (both required)
+  // Docs-only PRs are exempt from security gate (architecture still applies)
+  const prLabels = (prData.labels || []).map((l) => l.name);
+  const archApproved = prLabels.includes('architecture:approved');
+  const secApproved = prLabels.includes('security:approved');
+  const securityExempt = exemptReviews.includes('security:approved');
+
+  if (!archApproved) {
+    blockers.push({ check: 'architecture-approval', message: 'Missing architecture:approved label. Architecture review required.' });
+  } else {
+    passed.push('Architecture approved');
+  }
+
+  if (!secApproved && !securityExempt) {
+    blockers.push({ check: 'security-approval', message: 'Missing security:approved label. Security review required.' });
+  } else if (securityExempt) {
+    passed.push('Security review exempt (docs-only)');
+  } else {
+    passed.push('Security approved');
+  }
+
+  // 7. Check for changeset (look for .changeset/*.md files in PR diff)
   const hasChangeset = files.some((f) => f.filename.startsWith('.changeset/') && f.filename.endsWith('.md'));
   if (!hasChangeset) {
     // Check if exempt
-    const prLabels = (prData.labels || []).map((l) => l.name);
-    const isExempt = prLabels.includes('estimate:S') || prLabels.includes('squad:chore-auto');
-    if (!isExempt) {
+    const isChangesetExempt = prLabels.includes('estimate:S') || prLabels.includes('squad:chore-auto');
+    if (!isChangesetExempt) {
       blockers.push({ check: 'changeset', message: 'No changeset found. Run `npm run changeset` in the worktree.' });
     } else {
       passed.push('Changeset exempt (fast-lane)');
