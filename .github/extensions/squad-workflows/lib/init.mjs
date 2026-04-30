@@ -121,7 +121,7 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
   return results;
 }
 
-function buildInstructionBlock(config) {
+export function buildInstructionBlock(config) {
   return `${INSTRUCTIONS_MARKER_START}
 ## Workflow Tools (squad-workflows extension)
 
@@ -146,26 +146,51 @@ Large features must be decomposed into waves (GitHub milestones). Each wave is i
 ${INSTRUCTIONS_MARKER_END}`;
 }
 
-function buildCeremoniesBlock(config) {
+export function buildCeremoniesBlock(config) {
+  const fastLaneLabels = config.designProposal.fastLaneLabels.map(l => '`' + l + '`').join(' or ');
+  const approvals = config.labels.designApprovals.map(l => '`' + l + '`').join(', ');
   return `${INSTRUCTIONS_MARKER_START}
 ### Planning Ceremony (squad-workflows)
 
-| Step | Tool | Gate? |
-|------|------|-------|
-| Estimate issue | \`squad_workflows_estimate\` | Auto-applies label |
+| Step | Tool | Gate |
+|------|------|------|
+| Estimate issue | \`squad_workflows_estimate\` | Auto-applies \`estimate:S/M/L/XL\` label |
 | Decompose (if L/XL) | \`squad_workflows_decompose\` | Creates milestones + child issues |
-| Fast-lane check | \`squad_workflows_fast_lane\` | Skips DP+DR if eligible |
+| Fast-lane check | \`squad_workflows_fast_lane\` | Issues labeled ${fastLaneLabels} skip Design Proposal and Design Review |
+
+### Design Ceremony
+
+| Step | Tool | Gate |
+|------|------|------|
+| Post Design Proposal | \`squad_workflows_post_design_proposal\` | Posts DP comment on issue, adds \`design-proposal\` label |
+| Check Design Approval | \`squad_workflows_check_design_approval\` | Blocks until all approval labels present: ${approvals} |
+
+### Review Ceremony
+
+| Step | Tool | Gate |
+|------|------|------|
+| Check review feedback | \`squad_workflows_check_feedback\` | Lists unresolved review threads — all must be resolved before merge |
+| Check CI status | \`squad_workflows_check_ci\` | CI must be green — returns actionable failure context if not |
+| Pre-merge validation | \`squad_workflows_merge_check\` | Holistic gate: approvals + threads + CI + changeset + branch current |
+
+### Merge Ceremony
+
+| Step | Tool | Gate |
+|------|------|------|
+| Merge PR | \`squad_workflows_merge\` | Squash merge, delete branch, check wave completion |
 
 ### Wave Completion Ceremony
 
 When the last issue in a wave merges:
-1. \`squad_workflows_wave_status\` reports wave complete
-2. Run \`npm run changeset\` scoped to wave changes
-3. Prepare release with \`squad_workflows_merge\` nudge
+
+| Step | Tool | Gate |
+|------|------|------|
+| Check wave progress | \`squad_workflows_wave_status\` | Reports which waves are complete and releasable |
+| Release wave | \`squad_workflows_release_wave\` | Runs changeset version, closes milestone, posts summary |
 ${INSTRUCTIONS_MARKER_END}`;
 }
 
-function patchInstructionBlock(content, block) {
+export function patchInstructionBlock(content, block) {
   const startIdx = content.indexOf(INSTRUCTIONS_MARKER_START);
   const endIdx = content.indexOf(INSTRUCTIONS_MARKER_END);
 

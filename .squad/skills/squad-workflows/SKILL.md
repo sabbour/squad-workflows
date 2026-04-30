@@ -88,12 +88,18 @@ Validate and merge:
 - `squad_workflows_merge_check` — holistic validation (approvals + threads + CI + changeset + branch current)
 - `squad_workflows_merge` — squash merge + cleanup + wave completion check
 
-### 9) Wave Completion
+### 9) Wave Completion & Release
 
 When the last issue in a wave merges:
 
 - `squad_workflows_wave_status` — reports which waves are complete and releasable
-- Run `npm run changeset` for the wave, then prepare release
+- `squad_workflows_release_wave` — validates completeness, runs `changeset version`, closes milestone, posts summary
+  - Aggregates all pending changesets from the wave's PRs
+  - Bumps package versions and updates CHANGELOG via changesets
+  - Closes the GitHub milestone
+  - Posts a wave summary comment on the parent issue (if linked)
+  - Use `--dry-run` to preview without making changes
+  - After release_wave, commit version bumps and push to trigger the release pipeline
 
 ## Utility Tools
 

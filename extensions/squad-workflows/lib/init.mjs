@@ -118,6 +118,17 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
     results.instructions.push('ceremonies.md patched');
   }
 
+  // 5. Patch issue-lifecycle.md
+  const lifecyclePath = join(repoRoot, '.squad', 'issue-lifecycle.md');
+  if (existsSync(lifecyclePath)) {
+    const patched = patchInstructionBlock(
+      readFileSync(lifecyclePath, 'utf-8'),
+      buildLifecycleOverrideBlock()
+    );
+    writeFileSync(lifecyclePath, patched);
+    results.instructions.push('issue-lifecycle.md patched');
+  }
+
   return results;
 }
 
@@ -187,6 +198,20 @@ When the last issue in a wave merges:
 |------|------|------|
 | Check wave progress | \`squad_workflows_wave_status\` | Reports which waves are complete and releasable |
 | Release wave | \`squad_workflows_release_wave\` | Runs changeset version, closes milestone, posts summary |
+${INSTRUCTIONS_MARKER_END}`;
+}
+
+export function buildLifecycleOverrideBlock() {
+  return `${INSTRUCTIONS_MARKER_START}
+> **⚠️ This project uses squad-workflows.** The step-by-step commands in
+> sections 1–7 below are superseded by the squad-workflows extension tools.
+> Follow these references instead:
+>
+> - **Workflow tools**: \`.squad/skills/squad-workflows/SKILL.md\`
+> - **Ceremonies & gates**: \`.squad/ceremonies.md\`
+> - **Branch model & identity**: \`.github/copilot-instructions.md\`
+>
+> If this notice is missing, run \`squad-workflows setup\` to re-patch.
 ${INSTRUCTIONS_MARKER_END}`;
 }
 

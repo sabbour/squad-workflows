@@ -28,6 +28,8 @@ const DEFAULTS = {
     estimates: ['estimate:S', 'estimate:M', 'estimate:L', 'estimate:XL'],
     fastLane: ['estimate:S', 'squad:chore-auto'],
     designApprovals: ['architecture:approved', 'security:approved', 'codereview:approved', 'docs:approved'],
+    types: ['type:feature', 'type:bug', 'type:spike', 'type:docs', 'type:chore', 'type:epic'],
+    priorities: ['priority:p0', 'priority:p1', 'priority:p2'],
   },
   board: {
     columns: ['Backlog', 'Assigned', 'In Progress', 'In Review', 'Approved', 'Merged'],

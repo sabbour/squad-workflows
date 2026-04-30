@@ -17,7 +17,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureLabel } from './github-api.mjs';
 import { configExists, configPath, getTemplate, loadConfig } from './workflow-config.mjs';
-import { buildInstructionBlock, buildCeremoniesBlock, patchInstructionBlock } from './init.mjs';
+import { buildInstructionBlock, buildCeremoniesBlock, buildLifecycleOverrideBlock, patchInstructionBlock } from './init.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -190,6 +190,20 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
     if (!json) log(`  ✓ Patched ceremonies.md`);
   } else {
     if (!json) log(`  ⏭ No ceremonies.md found`);
+  }
+
+  // Patch issue-lifecycle.md
+  const lifecyclePath = join(target, '.squad', 'issue-lifecycle.md');
+  if (existsSync(lifecyclePath)) {
+    const patched = patchInstructionBlock(
+      readFileSync(lifecyclePath, 'utf-8'),
+      buildLifecycleOverrideBlock()
+    );
+    writeFileSync(lifecyclePath, patched);
+    results.instructions.push('issue-lifecycle.md');
+    if (!json) log(`  ✓ Patched issue-lifecycle.md`);
+  } else {
+    if (!json) log(`  ⏭ No issue-lifecycle.md found`);
   }
 
   results.phases.push('instructions');

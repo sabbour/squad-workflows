@@ -71,16 +71,39 @@ Production data: 0% completion across 6 retros using markdown checklists, 100% a
 <!-- squad-workflows: start -->
 ### Planning Ceremony (squad-workflows)
 
-| Step | Tool | Gate? |
-|------|------|-------|
-| Estimate issue | `squad_workflows_estimate` | Auto-applies label |
+| Step | Tool | Gate |
+|------|------|------|
+| Estimate issue | `squad_workflows_estimate` | Auto-applies `estimate:S/M/L/XL` label |
 | Decompose (if L/XL) | `squad_workflows_decompose` | Creates milestones + child issues |
-| Fast-lane check | `squad_workflows_fast_lane` | Skips DP+DR if eligible |
+| Fast-lane check | `squad_workflows_fast_lane` | Issues labeled `estimate:S` or `squad:chore-auto` skip Design Proposal and Design Review |
+
+### Design Ceremony
+
+| Step | Tool | Gate |
+|------|------|------|
+| Post Design Proposal | `squad_workflows_post_design_proposal` | Posts DP comment on issue, adds `design-proposal` label |
+| Check Design Approval | `squad_workflows_check_design_approval` | Blocks until all approval labels present: `architecture:approved`, `security:approved`, `codereview:approved`, `docs:approved` |
+
+### Review Ceremony
+
+| Step | Tool | Gate |
+|------|------|------|
+| Check review feedback | `squad_workflows_check_feedback` | Lists unresolved review threads — all must be resolved before merge |
+| Check CI status | `squad_workflows_check_ci` | CI must be green — returns actionable failure context if not |
+| Pre-merge validation | `squad_workflows_merge_check` | Holistic gate: approvals + threads + CI + changeset + branch current |
+
+### Merge Ceremony
+
+| Step | Tool | Gate |
+|------|------|------|
+| Merge PR | `squad_workflows_merge` | Squash merge, delete branch, check wave completion |
 
 ### Wave Completion Ceremony
 
 When the last issue in a wave merges:
-1. `squad_workflows_wave_status` reports wave complete
-2. Run `npm run changeset` scoped to wave changes
-3. Prepare release with `squad_workflows_merge` nudge
+
+| Step | Tool | Gate |
+|------|------|------|
+| Check wave progress | `squad_workflows_wave_status` | Reports which waves are complete and releasable |
+| Release wave | `squad_workflows_release_wave` | Runs changeset version, closes milestone, posts summary |
 <!-- squad-workflows: end -->

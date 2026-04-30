@@ -48,6 +48,20 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
     });
   }
 
+  // 3b. Issue lifecycle override
+  const lifecyclePath = join(repoRoot, '.squad', 'issue-lifecycle.md');
+  if (existsSync(lifecyclePath)) {
+    const content = readFileSync(lifecyclePath, 'utf-8');
+    const hasBlock = content.includes('<!-- squad-workflows: start -->');
+    checks.push({
+      check: 'issue-lifecycle',
+      status: hasBlock ? 'pass' : 'warn',
+      message: hasBlock
+        ? 'Override block present'
+        : 'Missing override block — upstream commands may conflict. Run squad-workflows setup to re-patch.',
+    });
+  }
+
   // 4. Labels (if token provided)
   if (token && owner && repo) {
     const config = configExists(repoRoot) ? loadConfig(repoRoot) : null;
