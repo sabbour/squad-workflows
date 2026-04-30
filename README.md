@@ -54,35 +54,125 @@ flowchart TD
     style Merge fill:#e8fde8,stroke:#4ad94a
 ```
 
+## How It Works
+
+You don't call these tools manually — **your agents do**.
+
+When you describe a feature to any Squad agent (Copilot CLI, a squad member, or through a GitHub issue), the agent reads the repo's `copilot-instructions.md` and discovers the workflow engine. From that point, every tool call chains automatically: each tool returns a `nextStep` that tells the agent what to do next.
+
+### Entry points
+
+There are three ways work enters the workflow:
+
+| Entry Point | What Happens |
+|-------------|-------------|
+| **Chat with Copilot CLI** | You describe a feature → agent creates an issue → workflow begins |
+| **Chat with Ralph** | You describe work → Ralph creates an issue, triages it, and dispatches to the right agent |
+| **GitHub issue created** | Ralph's polling loop detects it → triages → assigns `squad:{member}` → dispatches agent |
+
+All three converge on the same lifecycle. The difference is just who creates the issue.
+
+### The agent loop
+
+Once an issue exists, the implementing agent follows this loop — driven by the workflow tools:
+
+```mermaid
+sequenceDiagram
+    actor You
+    participant Ralph as Ralph (Monitor)
+    participant Agent as Implementing Agent
+    participant GH as GitHub
+    participant WF as squad-workflows
+
+    Note over You,WF: ① You describe what you want
+    You->>Ralph: "Add dark mode to the dashboard"
+    Ralph->>GH: Creates issue #87
+    Ralph->>WF: estimate(#87)
+    WF-->>GH: Applies estimate:M label
+    Ralph->>GH: Assigns squad:fry label
+    Ralph->>Agent: Dispatches Fry to work on #87
+
+    Note over Agent,WF: ② Agent checks ceremonies
+    Agent->>WF: fast_lane(#87)
+    WF-->>Agent: Not eligible (M) → needs Design Proposal
+
+    Note over Agent,WF: ③ Design phase
+    Agent->>WF: post_design_proposal(#87)
+    WF-->>GH: Posts DP comment, adds label
+
+    loop Until approved
+        Agent->>WF: check_design_approval(#87)
+        WF-->>Agent: Missing: security:approved
+    end
+    WF-->>Agent: ✅ All approvals present
+
+    Note over Agent,WF: ④ Implementation
+    Agent->>GH: Creates branch, implements, opens PR
+
+    Note over Agent,WF: ⑤ Review phase
+    loop Until merge-ready
+        Agent->>WF: check_feedback(PR)
+        Agent->>WF: check_ci(PR)
+        Agent->>WF: merge_check(PR)
+    end
+
+    Note over Agent,WF: ⑥ Merge & release
+    Agent->>WF: merge(PR)
+    WF-->>GH: Squash merge, cleanup branch
+    Agent->>WF: wave_status(milestone)
+    WF-->>Agent: Wave 2 complete ✅
+    Agent->>WF: release_wave("Wave 2")
+    WF-->>GH: Changeset version, close milestone, post summary
+```
+
+### What Ralph does with squad-workflows installed
+
+Ralph is the **monitor** — a polling loop that scans for work and dispatches agents. With `squad-workflows` installed, Ralph's cycle becomes:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Ralph's Polling Loop                               │
+│                                                     │
+│  1. SCAN     — Fetch open issues and PRs            │
+│  2. ESTIMATE — Call estimate on untriaged issues     │
+│  3. TRIAGE   — Route to squad:{member} via routing   │
+│  4. DISPATCH — Spawn implementing agent              │
+│  5. MONITOR  — Call status on in-flight issues       │
+│               Call check_feedback on open PRs        │
+│               Call check_ci on PRs with new commits  │
+│  6. MERGE    — Call merge_check → merge on ready PRs │
+│  7. RELEASE  — Call wave_status after merges          │
+│               Call release_wave when wave complete   │
+│  8. REPORT   — Post summary, loop back to SCAN      │
+└─────────────────────────────────────────────────────┘
+```
+
+Without `squad-workflows`, Ralph still routes and dispatches — but the agents have no shared protocol for ceremonies, gates, or wave delivery. The workflow tools give every agent the same playbook.
+
+### What if I'm working directly?
+
+The CLI works standalone too — useful for manual checks or when you want to drive the process yourself:
+
+```bash
+squad-workflows status --issue 87     # Where is this issue in the lifecycle?
+squad-workflows estimate --issue 87   # Estimate and label
+squad-workflows doctor                # Health check
+```
+
 ## Install
 
 ```bash
 npm install -g @sabbour/squad-workflows
 ```
 
-## Quick Start
+## Setup
 
 ```bash
-# One-time setup in your repo
-squad-workflows init
+# One-time setup — installs config, labels, and instruction patches
+squad-workflows setup
 
-# Scaffold the changeset release workflow
+# Scaffold the changeset release workflow (optional)
 squad-workflows scaffold-release
-
-# Health check
-squad-workflows doctor
-
-# Estimate an issue
-squad-workflows estimate --issue 42
-
-# Decompose into waves
-squad-workflows decompose --issue 42
-
-# Check workflow status
-squad-workflows status --issue 42
-
-# Release a completed wave
-squad-workflows release-wave --milestone "Wave 1"
 ```
 
 ## Tools
@@ -134,6 +224,19 @@ When installed as a Copilot CLI extension, the following tools are available:
 | `squad_workflows_status` | Current workflow state for an issue: phase, blockers, next step |
 
 ## Concepts
+
+### The Lifecycle
+
+Every issue follows the same path. The workflow engine gates progression — an agent can't merge a PR until the design is approved, can't release a wave until all issues are merged.
+
+| Phase | What happens | Who triggers it |
+|-------|-------------|-----------------|
+| **Planning** | Issue is estimated (S/M/L/XL) and large issues are decomposed into waves | Agent, on issue creation or assignment |
+| **Design** | Design Proposal posted, reviewed, and approved by configured reviewers | Agent posts; reviewer agents approve |
+| **Code** | Worktree created, implementation done, draft PR opened with changeset | Implementing agent |
+| **Review** | PR feedback threads resolved, CI green, merge gates checked | Implementing agent + reviewer agents |
+| **Merge** | Squash merge, branch cleanup, wave progress updated | Implementing agent |
+| **Release** | Wave completed → changeset versioning → milestone closed → summary posted | Implementing agent or release process |
 
 ### Waves
 
