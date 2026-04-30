@@ -187,6 +187,22 @@ These compose naturally. You can have:
 
 ---
 
+## Pre-Merge: Branch Freshness
+
+Before attempting merge, the agent MUST verify the PR branch is current with its base branch.
+
+1. Check whether GitHub reports the PR as behind its base branch.
+2. If behind, update the branch before merge:
+   ```bash
+   gh api repos/{owner}/{repo}/pulls/{pr}/update-branch -X PUT
+   ```
+3. If the update fails because of conflicts, rebase locally and push the refreshed branch:
+   ```bash
+   git fetch origin && git rebase origin/{base_branch} && git push --force-with-lease
+   ```
+
+This is a mandatory step in the workflow loop. GitHub will block merges of stale branches until they include the latest base branch changes.
+
 ## Anti-Patterns
 
 - ❌ Branching from main (branch from dev)

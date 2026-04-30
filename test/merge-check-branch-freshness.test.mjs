@@ -1,0 +1,160 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+const repoRoot = process.cwd();
+const LIB_DIR = resolve(repoRoot, 'extensions', 'squad-workflows', 'lib');
+
+function makeScratchDir(name) {
+  const dir = join(repoRoot, 'test', '.runtime', `${name}-${process.pid}-${Date.now()}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function writeFakeGh(dir) {
+  const ghPath = join(dir, 'gh');
+  writeFileSync(ghPath, [
+    '#!/bin/sh',
+    'set -eu',
+    'endpoint="${2-}"',
+    'mode="${TEST_GH_MODE-merge-check}"',
+    'if [ "$endpoint" = "graphql" ]; then',
+    `  printf '%s\\n' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'`,
+    '  exit 0',
+    'fi',
+    'case "$endpoint" in',
+    '  "/repos/test-owner/test-repo/pulls/123")',
+    `    printf '%s\\n' '{"draft":false,"mergeable_state":"behind","base":{"ref":"dev"},"head":{"sha":"abc123","ref":"feature/branch"},"user":{"login":"author"},"labels":[{"name":"architecture:approved"},{"name":"security:approved"}]}'`,
+    '    ;;',
+    '  "/repos/test-owner/test-repo/pulls/123/reviews")',
+    `    printf '%s\\n' '[{"state":"APPROVED","user":{"login":"reviewer"}}]'`,
+    '    ;;',
+    '  "/repos/test-owner/test-repo/pulls/123/files")',
+    `    printf '%s\\n' '[{"filename":".changeset/freshness.md"}]'`,
+    '    ;;',
+    '  "/repos/test-owner/test-repo/commits/abc123/check-runs")',
+    `    printf '%s\\n' '{"check_runs":[]}'`,
+    '    ;;',
+    '  "/repos/test-owner/test-repo/commits/abc123/status")',
+    `    printf '%s\\n' '{"statuses":[]}'`,
+    '    ;;',
+    '  "/repos/test-owner/test-repo/pulls/123/update-branch")',
+    '    if [ "$mode" = "conflict" ]; then',
+    `      printf '%s\\n' 'merge conflict' >&2`,
+    '      exit 1',
+    '    fi',
+    `    printf '%s\\n' '{"message":"Branch update scheduled"}'`,
+    '    ;;',
+    '  *)',
+    `    printf 'Unexpected gh endpoint: %s\\n' "$endpoint" >&2`,
+    '    exit 1',
+    '    ;;',
+    'esac',
+    '',
+  ].join('\n'));
+  chmodSync(ghPath, 0o755);
+}
+
+test('merge-check: behind branch blocker exposes auto-fix remediation', async () => {
+  const scratchDir = makeScratchDir('merge-check');
+  const fakeBinDir = join(scratchDir, 'bin');
+  mkdirSync(fakeBinDir, { recursive: true });
+  writeFakeGh(fakeBinDir);
+
+  const previousPath = process.env.PATH;
+  const previousMode = process.env.TEST_GH_MODE;
+  process.env.PATH = `${fakeBinDir}:${previousPath}`;
+  process.env.TEST_GH_MODE = 'merge-check';
+
+  try {
+    const { runMergeCheck } = await import(`${LIB_DIR}/merge-check.mjs`);
+    const result = await runMergeCheck(scratchDir, {
+      owner: 'test-owner',
+      repo: 'test-repo',
+      pr: 123,
+      token: 'test-token',
+    });
+
+    assert.equal(result.canMerge, false);
+    assert.equal(result.blockers.length, 1);
+    assert.deepEqual(result.blockers[0], {
+      check: 'branch-current',
+      message: 'Branch is behind dev. Must update before merge.',
+      remediation: {
+        command: 'gh api repos/test-owner/test-repo/pulls/123/update-branch -X PUT',
+        autoFix: true,
+        description: 'Update branch to include latest base branch changes',
+      },
+    });
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousMode === undefined) {
+      delete process.env.TEST_GH_MODE;
+    } else {
+      process.env.TEST_GH_MODE = previousMode;
+    }
+    rmSync(scratchDir, { recursive: true, force: true });
+  }
+});
+
+test('update-branch: returns rebase guidance when API update fails', async () => {
+  const scratchDir = makeScratchDir('update-branch');
+  const fakeBinDir = join(scratchDir, 'bin');
+  mkdirSync(fakeBinDir, { recursive: true });
+  writeFakeGh(fakeBinDir);
+
+  const previousPath = process.env.PATH;
+  const previousMode = process.env.TEST_GH_MODE;
+  process.env.PATH = `${fakeBinDir}:${previousPath}`;
+  process.env.TEST_GH_MODE = 'conflict';
+
+  try {
+    const { updateBranch } = await import(`${LIB_DIR}/update-branch.mjs`);
+    const result = await updateBranch('test-owner', 'test-repo', 123, 'test-token');
+
+    assert.equal(result.success, false);
+    assert.equal(result.baseBranch, 'dev');
+    assert.equal(result.rebaseRequired, true);
+    assert.match(result.error, /git fetch origin && git rebase origin\/dev && git push --force-with-lease/);
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousMode === undefined) {
+      delete process.env.TEST_GH_MODE;
+    } else {
+      process.env.TEST_GH_MODE = previousMode;
+    }
+    rmSync(scratchDir, { recursive: true, force: true });
+  }
+});
+
+test('update-branch: returns success when API update succeeds', async () => {
+  const scratchDir = makeScratchDir('update-branch-success');
+  const fakeBinDir = join(scratchDir, 'bin');
+  mkdirSync(fakeBinDir, { recursive: true });
+  writeFakeGh(fakeBinDir);
+
+  const previousPath = process.env.PATH;
+  const previousMode = process.env.TEST_GH_MODE;
+  process.env.PATH = `${fakeBinDir}:${previousPath}`;
+  process.env.TEST_GH_MODE = 'success';
+
+  try {
+    const { updateBranch } = await import(`${LIB_DIR}/update-branch.mjs`);
+    const result = await updateBranch('test-owner', 'test-repo', 123, 'test-token');
+
+    assert.equal(result.success, true);
+    assert.equal(result.baseBranch, 'dev');
+    assert.equal(result.result.message, 'Branch update scheduled');
+    assert.equal(result.message, 'Branch updated with latest dev changes.');
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousMode === undefined) {
+      delete process.env.TEST_GH_MODE;
+    } else {
+      process.env.TEST_GH_MODE = previousMode;
+    }
+    rmSync(scratchDir, { recursive: true, force: true });
+  }
+});

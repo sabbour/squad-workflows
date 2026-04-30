@@ -23,7 +23,15 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
 
   // 2. Check branch is current (not behind base)
   if (prData.mergeable_state === 'behind') {
-    blockers.push({ check: 'branch-current', message: `Branch is behind ${prData.base?.ref}. Run: gh api repos/${owner}/${repo}/pulls/${pr}/update-branch -X PUT` });
+    blockers.push({
+      check: 'branch-current',
+      message: `Branch is behind ${prData.base?.ref}. Must update before merge.`,
+      remediation: {
+        command: `gh api repos/${owner}/${repo}/pulls/${pr}/update-branch -X PUT`,
+        autoFix: true,
+        description: 'Update branch to include latest base branch changes',
+      },
+    });
   } else if (prData.mergeable_state === 'dirty') {
     blockers.push({ check: 'conflicts', message: 'PR has merge conflicts. Rebase required.' });
   } else {
