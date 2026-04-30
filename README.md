@@ -44,7 +44,8 @@ flowchart TD
         MC -->|✅ Ready| MG(merge)
         MG --> WS(wave_status)
         WS -->|More issues| A
-        WS -->|✅ Wave complete| REL[Release Changeset]
+        WS -->|✅ Wave complete| RW(release_wave)
+        RW --> REL[Release Changeset]
     end
 
     style Planning fill:#e8f4fd,stroke:#4a90d9
@@ -111,6 +112,7 @@ When installed as a Copilot CLI extension, the following tools are available:
 |------|-------------|
 | `squad_workflows_merge_check` | Pre-merge validation: approvals + threads + CI + changeset |
 | `squad_workflows_merge` | Squash merge + cleanup + wave completion check |
+| `squad_workflows_release_wave` | Release a completed wave: validate, version, close milestone, post summary |
 
 ### Utility
 | Tool | Description |
@@ -146,7 +148,7 @@ The workflow enforces these ceremonies (with fast-lane exceptions):
 | Design Proposal | Before coding | `post_design_proposal` |
 | Design Review | After DP posted | `check_design_approval` |
 | PR Review Gate | Before merge | `check_feedback`, `merge_check` |
-| Wave Completion | Last issue in wave merges | `wave_status`, `merge` |
+| Wave Completion | Last issue in wave merges | `wave_status`, `release_wave` |
 
 ### Fast Lane
 

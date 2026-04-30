@@ -353,26 +353,4 @@ joinSession(async (session) => {
       return runStatus(REPO_ROOT, { issue, token, owner, repo });
     }),
   });
-
-  // ── Release ────────────────────────────────────────────────────────────
-
-  session.registerTool({
-    name: 'squad_workflows_release_wave',
-    description: 'Release a completed wave: validate all issues closed, run changeset version, close milestone, post summary. Use --dry-run to preview.',
-    parameters: {
-      type: 'object',
-      properties: {
-        milestone: { type: 'string', description: 'Milestone title (optional — picks first complete wave if omitted)' },
-        dryRun: { type: 'boolean', description: 'Preview without making changes' },
-        token: { type: 'string', description: 'GitHub token (from squad_identity_resolve_token). Required.' },
-        owner: { type: 'string', description: 'Repository owner' },
-        repo: { type: 'string', description: 'Repository name' },
-      },
-      required: ['token', 'owner', 'repo'],
-    },
-    handler: jsonHandler(async ({ milestone, dryRun, token, owner, repo }) => {
-      const { runReleaseWave } = await lib('release-wave.mjs');
-      return runReleaseWave(REPO_ROOT, { milestone, dryRun, token, owner, repo });
-    }),
-  });
 });

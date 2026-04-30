@@ -38,6 +38,8 @@ const { positionals, values } = parseArgs({
     owner: { type: 'string' },
     repo: { type: 'string' },
     force: { type: 'boolean' },
+    'dry-run': { type: 'boolean' },
+    milestone: { type: 'string' },
   },
   strict: false,
 });
@@ -57,6 +59,7 @@ Commands:
   wave-status       Show wave/milestone progress
   merge-check       Pre-merge validation for a PR
   fast-lane         Check fast-lane eligibility
+  release-wave      Release a completed wave (version + close milestone)
 
 Options:
   --help, -h        Show help
@@ -65,7 +68,9 @@ Options:
   --pr <N>          PR number
   --token <T>       GitHub token (from squad-identity)
   --owner <O>       Repository owner
-  --repo <R>        Repository name`);
+  --repo <R>        Repository name
+  --milestone <M>   Milestone title (for release-wave)
+  --dry-run         Preview without making changes`);
 }
 
 if (values.help || !command) {
@@ -112,6 +117,10 @@ async function run() {
     case 'fast-lane': {
       const { runFastLane } = await import(`${LIB_DIR}/fast-lane.mjs`);
       return runFastLane(repoRoot, values);
+    }
+    case 'release-wave': {
+      const { runReleaseWave } = await import(`${LIB_DIR}/release-wave.mjs`);
+      return runReleaseWave(repoRoot, { ...values, dryRun: values['dry-run'] });
     }
     default:
       console.error(`Unknown command: ${command}`);
