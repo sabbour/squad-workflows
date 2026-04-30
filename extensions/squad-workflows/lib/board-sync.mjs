@@ -85,7 +85,7 @@ async function inferColumn(owner, repo, issue, token) {
   if (state === 'closed') return 'Merged';
   if (labels.some((l) => l.endsWith(':approved'))) return 'Approved';
   if (issueData.pull_request) return 'In Review';
-  if (labels.includes('in-progress') || issueData.assignee) return 'In Progress';
+  if (labels.includes('in-progress')) return 'In Progress';
   if (issueData.assignee) return 'Assigned';
   return 'Backlog';
 }
