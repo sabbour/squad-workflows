@@ -203,8 +203,8 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
     results.doctor = doctorResult;
     if (!json && doctorResult?.checks) {
       for (const check of doctorResult.checks) {
-        const icon = check.ok ? '✓' : '✗';
-        if (!json) log(`  ${icon} ${check.name}: ${check.details || (check.ok ? 'OK' : 'FAIL')}`);
+        const icon = check.status === 'pass' ? '✓' : check.status === 'warn' ? '⚠' : '✗';
+        log(`  ${icon} ${check.check}: ${check.message}`);
       }
     }
   } catch (err) {
