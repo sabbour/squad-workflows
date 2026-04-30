@@ -76,8 +76,12 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
   }
 
   // 5. SKILL.md
-  const skillPath = join(repoRoot, '.squad', 'skills', 'pr-workflow', 'SKILL.md');
-  if (existsSync(skillPath)) {
+  const skillCandidates = [
+    join(repoRoot, '.squad', 'skills', 'squad-workflows', 'SKILL.md'),
+    join(repoRoot, '.squad', 'skills', 'pr-workflow', 'SKILL.md'),
+  ];
+  const skillPath = skillCandidates.find((p) => existsSync(p));
+  if (skillPath) {
     const content = readFileSync(skillPath, 'utf-8');
     const refsExtension = content.includes('squad_workflows_');
     checks.push({
