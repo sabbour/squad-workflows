@@ -2,24 +2,25 @@
  * squad-workflows — Copilot CLI extension entry point.
  *
  * Registers all squad_workflows_* tools for the issue-to-merge lifecycle.
+ * Token auto-resolution: all tools resolve bot tokens internally via the
+ * squad-identity lease system. No token parameters needed from callers.
  */
 
-import { approveAll } from '@github/copilot-sdk';
 import { joinSession } from '@github/copilot-sdk/extension';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LIB_DIR = join(__dirname, 'lib');
 
 function resolveRepoRoot() {
   // Walk up from extension dir: .github/extensions/squad-workflows/ → repo root
-  const candidate = join(__dirname, '..', '..', '..');
-  if (existsSync(join(candidate, '.squad')) || existsSync(join(candidate, 'package.json'))) {
-    return candidate;
-  }
-  return candidate;
+  return join(__dirname, '..', '..', '..');
 }
 
 function jsonHandler(fn) {
@@ -35,17 +36,12 @@ function jsonHandler(fn) {
   };
 }
 
-const REPO_ROOT = resolveRepoRoot();
-
-// Lazy-load lib modules to keep startup fast
-const lib = (name) => import(join(LIB_DIR, name));
-
 // ---------------------------------------------------------------------------
 // Token auto-resolution via squad-identity lease system
 // ---------------------------------------------------------------------------
 const IDENTITY_LIB = join(__dirname, '..', 'squad-identity', 'lib');
 
-let _leaseState = null; // { scopeId, role, deadlineUnix, remainingOps }
+let _leaseState = null;
 
 async function getToken(roleSlug) {
   const role = roleSlug || process.env.ROLE_SLUG || 'lead';
@@ -60,7 +56,6 @@ async function getToken(roleSlug) {
         _leaseState.remainingOps = result.remainingOps;
         return result.token;
       } catch {
-        // Lease expired/exhausted — fall through to create new one
         _leaseState = null;
       }
     } else {
@@ -70,6 +65,7 @@ async function getToken(roleSlug) {
 
   // Resolve a fresh token and create a new lease
   const { resolveToken } = await import(join(IDENTITY_LIB, 'resolve-token.mjs'));
+  const REPO_ROOT = resolveRepoRoot();
   const token = await resolveToken(REPO_ROOT, role);
   if (!token) {
     throw new Error(`Could not resolve token for role "${role}". Run squad_identity_doctor for diagnostics.`);
@@ -79,14 +75,17 @@ async function getToken(roleSlug) {
   const lease = createLease({ role, token, maxOps: 500, maxTimeSec: 3500 });
   _leaseState = { scopeId: lease.scopeId, role, deadlineUnix: lease.deadlineUnix, remainingOps: lease.remainingOps };
 
-  // Exchange immediately to get the token back (first op)
   const result = exchangeLease(lease.scopeId, role);
   _leaseState.remainingOps = result.remainingOps;
   return result.token;
 }
 
+const REPO_ROOT = resolveRepoRoot();
+
+// Lazy-load lib modules to keep startup fast
+const lib = (name) => import(join(LIB_DIR, name));
+
 const session = await joinSession({
-  onPermissionRequest: approveAll,
   tools: [
     // ── Setup ──────────────────────────────────────────────────────────────
     {
@@ -130,7 +129,7 @@ const session = await joinSession({
     // ── Planning ───────────────────────────────────────────────────────────
     {
       name: 'squad_workflows_estimate',
-      description: 'Analyze an issue and auto-apply an estimate:S/M/L/XL label with story points. Combines issue description, acceptance criteria, files likely touched, and historical data.',
+      description: 'Analyze an issue and auto-apply an estimate:S/M/L/XL label with story points.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -149,7 +148,7 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_decompose',
-      description: 'Decompose a large issue into waves. Creates a GitHub milestone per wave and child issues with demo criteria. Enforces max estimate:M per issue.',
+      description: 'Decompose a large issue into waves. Creates a GitHub milestone per wave and child issues with demo criteria.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -161,7 +160,7 @@ const session = await joinSession({
             items: {
               type: 'object',
               properties: {
-                title: { type: 'string', description: 'Wave title (e.g., "Basic Widget Support")' },
+                title: { type: 'string', description: 'Wave title' },
                 demoCriteria: { type: 'string', description: 'What you can test after this wave ships' },
                 issues: {
                   type: 'array',
@@ -195,7 +194,7 @@ const session = await joinSession({
     // ── Design ─────────────────────────────────────────────────────────────
     {
       name: 'squad_workflows_post_design_proposal',
-      description: 'Post a Design Proposal comment on an issue. Validates completeness of required sections. Includes subtasks grouped by wave.',
+      description: 'Post a Design Proposal comment on an issue. Validates completeness of required sections.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -229,7 +228,7 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_check_design_approval',
-      description: 'Check if an issue has all required Design Review approval labels. Returns missing approvals and what\'s blocking.',
+      description: 'Check if an issue has all required Design Review approval labels.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -250,7 +249,7 @@ const session = await joinSession({
     // ── Review ─────────────────────────────────────────────────────────────
     {
       name: 'squad_workflows_check_feedback',
-      description: 'List all unresolved review threads across all reviewers for a PR. Shows what needs addressing.',
+      description: 'List all unresolved review threads across all reviewers for a PR.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -330,7 +329,7 @@ const session = await joinSession({
     // ── Utility ────────────────────────────────────────────────────────────
     {
       name: 'squad_workflows_fast_lane',
-      description: 'Check if an issue qualifies for fast-lane (estimate:S or squad:chore-auto). Returns which ceremonies can be skipped.',
+      description: 'Check if an issue qualifies for fast-lane (estimate:S or squad:chore-auto).',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -349,7 +348,7 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_board_sync',
-      description: 'Sync project board column based on current issue/PR state. Uses GraphQL project mutations.',
+      description: 'Sync project board column based on current issue/PR state.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -369,12 +368,12 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_wave_status',
-      description: 'Show wave/milestone progress: which waves are complete, releasable, or blocking. Includes issue counts and demo criteria.',
+      description: 'Show wave/milestone progress: which waves are complete, releasable, or blocking.',
       skipPermission: true,
       parameters: {
         type: 'object',
         properties: {
-          milestone: { type: 'string', description: 'Specific milestone title (optional — shows all waves if omitted)' },
+          milestone: { type: 'string', description: 'Specific milestone title (optional)' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
         },
@@ -409,12 +408,12 @@ const session = await joinSession({
     // ── Release ────────────────────────────────────────────────────────────
     {
       name: 'squad_workflows_release_wave',
-      description: 'Release a completed wave: validate all issues closed, run changeset version, close milestone, post summary. Use --dry-run to preview.',
+      description: 'Release a completed wave: validate all issues closed, run changeset version, close milestone, post summary.',
       skipPermission: true,
       parameters: {
         type: 'object',
         properties: {
-          milestone: { type: 'string', description: 'Milestone title (optional — picks first complete wave if omitted)' },
+          milestone: { type: 'string', description: 'Milestone title (optional)' },
           dryRun: { type: 'boolean', description: 'Preview without making changes' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
@@ -427,11 +426,9 @@ const session = await joinSession({
         return runReleaseWave(REPO_ROOT, { milestone, dryRun, token, owner, repo });
       }),
     },
-
-    // ── Scaffold: changeset release workflow ──────────────────────────────
     {
       name: 'squad_workflows_scaffold_release',
-      description: 'Scaffold a manually-dispatched GitHub Actions workflow for changeset-based releases. Writes squad-changeset-release.yml into .github/workflows/.',
+      description: 'Scaffold a manually-dispatched GitHub Actions workflow for changeset-based releases.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -443,6 +440,165 @@ const session = await joinSession({
       handler: jsonHandler(async ({ dryRun, force }) => {
         const { scaffoldChangesetRelease } = await lib('scaffold-changeset-release.mjs');
         return scaffoldChangesetRelease(REPO_ROOT, { dryRun, force });
+      }),
+    },
+
+    // ── Git/GitHub Write Wrappers (bot identity) ────────────────────────────
+    {
+      name: 'squad_workflows_push',
+      description: 'Push (or force-push) a branch to GitHub using bot identity. Uses x-access-token URL so writes are attributed to the bot.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          branch: { type: 'string', description: 'Branch name to push (e.g., "squad/184-fix-identity")' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          roleSlug: { type: 'string', description: 'Optional role slug for token resolution' },
+          cwd: { type: 'string', description: 'Working directory (for worktrees). Defaults to repo root.' },
+          force: { type: 'boolean', description: 'Use --force-with-lease for force push' },
+        },
+        required: ['branch', 'owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ branch, owner, repo, roleSlug, cwd, force }) => {
+        const token = await getToken(roleSlug);
+        const pushUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
+        const args = ['push'];
+        if (force) args.push('--force-with-lease');
+        args.push(pushUrl, `HEAD:refs/heads/${branch}`);
+        await execFileAsync('git', args, {
+          cwd: cwd || REPO_ROOT,
+          timeout: 60_000,
+        });
+        return { pushed: branch, repo: `${owner}/${repo}`, force: !!force };
+      }),
+    },
+    {
+      name: 'squad_workflows_create_pr',
+      description: 'Create a pull request using bot identity. Auto-attests the write. Returns PR number and URL (never the token).',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'PR title' },
+          body: { type: 'string', description: 'PR body (markdown)' },
+          head: { type: 'string', description: 'Head branch name' },
+          base: { type: 'string', description: 'Base branch (default: dev)' },
+          draft: { type: 'boolean', description: 'Create as draft PR (default: true)' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          roleSlug: { type: 'string', description: 'Optional role slug for token resolution' },
+        },
+        required: ['title', 'body', 'head', 'owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ title, body, head, base, draft, owner, repo, roleSlug }) => {
+        const token = await getToken(roleSlug);
+        const { ghApi } = await lib('github-api.mjs');
+        const pr = await ghApi(`/repos/${owner}/${repo}/pulls`, {
+          token,
+          method: 'POST',
+          body: { title, body, head, base: base || 'dev', draft: draft !== false },
+        });
+
+        // Auto-attest the write (best-effort)
+        try {
+          const attestLib = join(__dirname, '..', 'squad-identity', 'lib', 'attest-write.mjs');
+          if (existsSync(attestLib)) {
+            const { attestWrite } = await import(attestLib);
+            await attestWrite({
+              owner, repo,
+              writeType: 'pr',
+              writeRef: String(pr.number),
+              roleSlug: roleSlug || process.env.ROLE_SLUG || 'lead',
+              token,
+            });
+          }
+        } catch {
+          // Attestation failure should not block PR creation
+        }
+
+        return { pr_number: pr.number, url: pr.html_url, author: pr.user?.login, draft: pr.draft };
+      }),
+    },
+    {
+      name: 'squad_workflows_close_issue',
+      description: 'Close a GitHub issue using bot identity. Optionally posts a comment before closing.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          issue: { type: 'number', description: 'Issue number' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          roleSlug: { type: 'string', description: 'Optional role slug for token resolution' },
+          comment: { type: 'string', description: 'Optional comment to post before closing' },
+        },
+        required: ['issue', 'owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ issue, owner, repo, roleSlug, comment }) => {
+        const token = await getToken(roleSlug);
+        const { ghApi, postComment } = await lib('github-api.mjs');
+        if (comment) {
+          await postComment(owner, repo, issue, comment, token);
+        }
+        await ghApi(`/repos/${owner}/${repo}/issues/${issue}`, {
+          token,
+          method: 'PATCH',
+          body: { state: 'closed' },
+        });
+        return { closed: issue, commented: !!comment };
+      }),
+    },
+    {
+      name: 'squad_workflows_comment',
+      description: 'Post a comment on an issue or PR using bot identity.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          issue: { type: 'number', description: 'Issue or PR number' },
+          body: { type: 'string', description: 'Comment body (markdown)' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          roleSlug: { type: 'string', description: 'Optional role slug for token resolution' },
+        },
+        required: ['issue', 'body', 'owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ issue, body, owner, repo, roleSlug }) => {
+        const token = await getToken(roleSlug);
+        const { postComment } = await lib('github-api.mjs');
+        const result = await postComment(owner, repo, issue, body, token);
+        return { comment_id: result.id, url: result.html_url };
+      }),
+    },
+    {
+      name: 'squad_workflows_label',
+      description: 'Add or remove labels on an issue/PR using bot identity.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          issue: { type: 'number', description: 'Issue or PR number' },
+          add: { type: 'array', items: { type: 'string' }, description: 'Labels to add' },
+          remove: { type: 'array', items: { type: 'string' }, description: 'Labels to remove' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          roleSlug: { type: 'string', description: 'Optional role slug for token resolution' },
+        },
+        required: ['issue', 'owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ issue, add, remove, owner, repo, roleSlug }) => {
+        const token = await getToken(roleSlug);
+        const { addLabels, removeLabel } = await lib('github-api.mjs');
+        if (add && add.length > 0) {
+          await addLabels(owner, repo, issue, add, token);
+        }
+        if (remove && remove.length > 0) {
+          for (const label of remove) {
+            await removeLabel(owner, repo, issue, label, token);
+          }
+        }
+        return { issue, added: add || [], removed: remove || [] };
       }),
     },
   ],
