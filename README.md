@@ -149,6 +149,24 @@ Ralph is the **monitor** — a polling loop that scans for work and dispatches a
 
 Without `squad-workflows`, Ralph still routes and dispatches — but the agents have no shared protocol for ceremonies, gates, or wave delivery. The workflow tools give every agent the same playbook.
 
+### PR Feedback Loop
+
+When a PR enters the review phase, Ralph and implementing agents orchestrate a **feedback loop** to clear the board — aiming for 0 unresolved threads, 0 failing CI, 0 stale PRs.
+
+The loop follows a 9-step sequence:
+
+1. **Scan** — Fetch unresolved review threads (thread ID, reviewer, file, line, comment)
+2. **Prioritize** — Sort threads by blocker severity and assigned reviewer
+3. **Fix Code** — Implementing agent reads the feedback and pushes fixes
+4. **Reply + Resolve** — Agent posts a reply to each thread (`"Addressed in {sha}: {description}"`) then resolves it
+5. **Re-request** — If review was requested from a specific reviewer, re-request it
+6. **Merge Gate** — Call `merge_check` to validate all gates (approvals, threads, CI, changeset)
+7. **Branch Behind** — If base branch moved, call `update_branch` to sync
+8. **Next PR** — After merge, loop to the next open PR
+9. **Wave Boundary** — When all PRs in a wave are merged, call `release_wave`
+
+> **Note on identity:** Thread replies use the **PR author's bot identity** (not Ralph's). This is enforced by `squad-identity` to ensure feedback replies are attributed to the agent who wrote the code. Related skills: `pr-feedback-loop`, `reviewer-protocol`, `gh-auth-isolation`, `self-approval-fallback`, `git-workflow`.
+
 ### What if I'm working directly?
 
 The CLI works standalone too — useful for manual checks or when you want to drive the process yourself:
@@ -174,6 +192,15 @@ squad-workflows setup
 # Scaffold the changeset release workflow (optional)
 squad-workflows scaffold-release
 ```
+
+### Charter Patching
+
+The `squad-workflows init` and `squad-workflows setup` commands patch **two files**:
+
+1. `.github/copilot-instructions.md` — Injects the Workflow Tools reference section so agents discover the entire toolkit
+2. `.squad/agents/ralph/charter.md` — Injects a `<!-- squad-workflows: start/end -->` block containing the PR Feedback Loop protocol (the 9-step playbook Ralph uses to clear the board)
+
+The `squad-workflows doctor` health check verifies both patches are present and current.
 
 ## Tools
 
@@ -201,7 +228,10 @@ When installed as a Copilot CLI extension, the following tools are available:
 | Tool | Description |
 |------|-------------|
 | `squad_workflows_check_feedback` | List unresolved review threads across all reviewers |
+| `squad_workflows_address_feedback` | Fetch unresolved review threads for a PR with structured data (thread ID, reviewer, file, line, comment body) |
+| `squad_workflows_address_all_feedback` | Address ALL unresolved threads on a PR in one call — orchestrates fix code → reply to each thread → resolve threads |
 | `squad_workflows_check_ci` | Check CI status for a PR with actionable failure context |
+| `squad_workflows_update_branch` | Merge base branch into a PR's head branch to keep it current |
 
 ### Merge
 | Tool | Description |
