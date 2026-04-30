@@ -60,6 +60,7 @@ Commands:
   merge-check       Pre-merge validation for a PR
   fast-lane         Check fast-lane eligibility
   release-wave      Release a completed wave (version + close milestone)
+  scaffold-release  Scaffold changeset release workflow into .github/workflows/
 
 Options:
   --help, -h        Show help
@@ -121,6 +122,10 @@ async function run() {
     case 'release-wave': {
       const { runReleaseWave } = await import(`${LIB_DIR}/release-wave.mjs`);
       return runReleaseWave(repoRoot, { ...values, dryRun: values['dry-run'] });
+    }
+    case 'scaffold-release': {
+      const { scaffoldChangesetRelease } = await import(`${LIB_DIR}/scaffold-changeset-release.mjs`);
+      return scaffoldChangesetRelease(repoRoot, { dryRun: values['dry-run'], force: values.force });
     }
     default:
       console.error(`Unknown command: ${command}`);

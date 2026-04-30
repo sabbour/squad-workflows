@@ -375,4 +375,21 @@ joinSession(async (session) => {
       return runReleaseWave(REPO_ROOT, { milestone, dryRun, token, owner, repo });
     }),
   });
+
+  // ── Scaffold: changeset release workflow ──────────────────────────────
+  session.registerTool({
+    name: 'squad_workflows_scaffold_release',
+    description: 'Scaffold a manually-dispatched GitHub Actions workflow for changeset-based releases. Writes squad-changeset-release.yml into .github/workflows/.',
+    parameters: {
+      type: 'object',
+      properties: {
+        dryRun: { type: 'boolean', description: 'Preview without writing files' },
+        force: { type: 'boolean', description: 'Overwrite existing workflow file' },
+      },
+    },
+    handler: jsonHandler(async ({ dryRun, force }) => {
+      const { scaffoldChangesetRelease } = await lib('scaffold-changeset-release.mjs');
+      return scaffoldChangesetRelease(REPO_ROOT, { dryRun, force });
+    }),
+  });
 });
