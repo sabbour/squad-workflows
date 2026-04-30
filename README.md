@@ -11,6 +11,48 @@ Codifies the entire development lifecycle — from planning and estimation throu
 design proposals, review ceremonies, merge gates, and wave-based incremental
 delivery — as executable Copilot CLI tools.
 
+```mermaid
+flowchart TD
+    subgraph Planning ["🗂️ Planning"]
+        A[Issue Created] --> B(estimate)
+        B -->|L / XL| C(decompose)
+        C --> D[Waves + Child Issues]
+        B -->|S| FL{fast_lane?}
+        FL -->|Yes| CODE
+    end
+
+    subgraph Design ["📐 Design"]
+        D --> DP(post_design_proposal)
+        B -->|M| DP
+        FL -->|No| DP
+        DP --> DR(check_design_approval)
+        DR -->|Missing approvals| DR
+        DR -->|✅ Approved| CODE[Start Coding]
+    end
+
+    subgraph Review ["🔍 Review"]
+        CODE --> PR[Open PR]
+        PR --> FB(check_feedback)
+        FB -->|Unresolved threads| FB
+        FB -->|✅ Clear| CI(check_ci)
+        CI -->|❌ Failing| CI
+        CI -->|✅ Green| MC(merge_check)
+    end
+
+    subgraph Merge ["🚀 Merge"]
+        MC -->|❌ Blocked| FB
+        MC -->|✅ Ready| MG(merge)
+        MG --> WS(wave_status)
+        WS -->|More issues| A
+        WS -->|✅ Wave complete| REL[Release Changeset]
+    end
+
+    style Planning fill:#e8f4fd,stroke:#4a90d9
+    style Design fill:#fdf2e8,stroke:#d9944a
+    style Review fill:#f2e8fd,stroke:#944ad9
+    style Merge fill:#e8fde8,stroke:#4ad94a
+```
+
 ## Install
 
 ```bash
