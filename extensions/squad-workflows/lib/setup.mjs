@@ -221,6 +221,7 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
     log(`  1. Edit .squad/workflows/config.json to match your project's branch model.`);
     log(`  2. Commit the generated files.`);
     log(`  3. Use squad_workflows_estimate on issues to start the workflow.`);
+    return undefined; // visual output already printed to stderr
   }
 
   return results;

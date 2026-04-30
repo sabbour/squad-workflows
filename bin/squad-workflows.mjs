@@ -151,5 +151,24 @@ try {
 
 function formatHuman(result) {
   if (typeof result === 'string') return result;
+  if (result === undefined || result === null) return '';
+
+  // Doctor output
+  if (result.checks && result.summary) {
+    const lines = [`\n━━━ Health Check ━━━\n`];
+    for (const check of result.checks) {
+      const icon = check.status === 'pass' ? '✓' : check.status === 'warn' ? '⚠' : check.status === 'fail' ? '✗' : 'ℹ';
+      lines.push(`  ${icon} ${check.check}: ${check.message}`);
+    }
+    lines.push(`\n${result.healthy ? '✅' : '❌'} ${result.summary}`);
+    return lines.join('\n');
+  }
+
+  // Scaffold output
+  if (result.path && result.status) {
+    const icon = result.status === 'created' || result.status === 'updated' ? '✓' : result.status.startsWith('skipped') ? '⏭' : '📋';
+    return `  ${icon} ${result.path} — ${result.status}`;
+  }
+
   return JSON.stringify(result, null, 2);
 }
