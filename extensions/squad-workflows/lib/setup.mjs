@@ -17,7 +17,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureLabel } from './github-api.mjs';
 import { configExists, configPath, getTemplate, loadConfig } from './workflow-config.mjs';
-import { buildInstructionBlock, buildCeremoniesBlock, buildLifecycleOverrideBlock, patchInstructionBlock } from './init.mjs';
+import { buildInstructionBlock, buildRalphCharterBlock, buildCeremoniesBlock, buildLifecycleOverrideBlock, patchInstructionBlock } from './init.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -176,6 +176,20 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
     if (!json) log(`  ✓ Patched copilot-instructions.md`);
   } else {
     if (!json) log(`  ⏭ No copilot-instructions.md found`);
+  }
+
+  // Patch Ralph's charter
+  const ralphCharterPath = join(target, '.squad', 'agents', 'ralph', 'charter.md');
+  if (existsSync(ralphCharterPath)) {
+    const patched = patchInstructionBlock(
+      readFileSync(ralphCharterPath, 'utf-8'),
+      buildRalphCharterBlock()
+    );
+    writeFileSync(ralphCharterPath, patched);
+    results.instructions.push('ralph/charter.md');
+    if (!json) log(`  ✓ Patched ralph/charter.md`);
+  } else {
+    if (!json) log(`  ⏭ No ralph/charter.md found`);
   }
 
   // Patch ceremonies.md

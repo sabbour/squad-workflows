@@ -107,7 +107,18 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
     results.instructions.push('copilot-instructions.md patched');
   }
 
-  // 4. Patch ceremonies.md
+  // 4. Patch Ralph's charter
+  const ralphCharterPath = join(repoRoot, '.squad', 'agents', 'ralph', 'charter.md');
+  if (existsSync(ralphCharterPath)) {
+    const patched = patchInstructionBlock(
+      readFileSync(ralphCharterPath, 'utf-8'),
+      buildRalphCharterBlock()
+    );
+    writeFileSync(ralphCharterPath, patched);
+    results.instructions.push('ralph/charter.md patched');
+  }
+
+  // 5. Patch ceremonies.md
   const ceremoniesPath = join(repoRoot, '.squad', 'ceremonies.md');
   if (existsSync(ceremoniesPath)) {
     const patched = patchInstructionBlock(
@@ -118,7 +129,7 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
     results.instructions.push('ceremonies.md patched');
   }
 
-  // 5. Patch issue-lifecycle.md
+  // 6. Patch issue-lifecycle.md
   const lifecyclePath = join(repoRoot, '.squad', 'issue-lifecycle.md');
   if (existsSync(lifecyclePath)) {
     const patched = patchInstructionBlock(
@@ -141,6 +152,8 @@ Use these tools for the issue-to-merge lifecycle:
 **Planning:** \`squad_workflows_estimate\` → \`squad_workflows_decompose\` (if L/XL)
 **Design:** \`squad_workflows_post_design_proposal\` → \`squad_workflows_check_design_approval\`
 **Review:** \`squad_workflows_check_feedback\` + \`squad_workflows_check_ci\`
+**Feedback Loop:** \`squad_workflows_address_feedback\` / \`squad_workflows_address_all_feedback\` → fix → resolve → re-request
+**Branch Sync:** \`squad_workflows_update_branch\` (reactive — only when merge blocked by stale branch)
 **Merge:** \`squad_workflows_merge_check\` → \`squad_workflows_merge\`
 **Utility:** \`squad_workflows_fast_lane\`, \`squad_workflows_board_sync\`, \`squad_workflows_wave_status\`, \`squad_workflows_status\`
 
@@ -154,6 +167,42 @@ Large features must be decomposed into waves (GitHub milestones). Each wave is i
 - Base branch: \`${config.branchModel.base}\`
 - Branch naming: \`squad/{issue-number}-{kebab-case-slug}\`
 - Always use worktrees: \`git worktree add .worktrees/{slug} -b squad/{issue}-{slug} origin/${config.branchModel.base}\`
+${INSTRUCTIONS_MARKER_END}`;
+}
+
+export function buildRalphCharterBlock() {
+  return `${INSTRUCTIONS_MARKER_START}
+## PR Feedback Loop (squad-workflows)
+
+**Goal:** Clear the board — get every open squad PR merged and every assigned issue completed. This is Ralph's primary objective when active. The board is clear when there are 0 open PRs from squad bots and 0 open issues with \`squad:*\` labels.
+
+**Skills to read before starting:**
+- \`.copilot/skills/pr-feedback-loop/SKILL.md\` — the full cycle definition (initiation, patterns, thread protocol)
+- \`.copilot/skills/reviewer-protocol/SKILL.md\` — how reviews work, thread resolution rules
+- \`.copilot/skills/gh-auth-isolation/SKILL.md\` — bot identity isolation for writes
+- \`.copilot/skills/self-approval-fallback/SKILL.md\` — what to do when review gate is stuck on self-authored PRs
+- \`.copilot/skills/git-workflow/SKILL.md\` — branch conventions, push protocol
+
+### Loop steps (execute in order, every work-check cycle)
+
+1. **Scan.** Call \`squad_workflows_address_all_feedback(owner, repo)\`. Returns structured data for every open PR with unresolved review threads — file paths, line numbers, reviewer suggestions, category (codereview/security/docs/architecture).
+2. **Prioritize.** Sort PRs: CI failures first → \`CHANGES_REQUESTED\` → approved-but-unresolved-threads. Skip PRs with unresolvable blockers (missing human approval, merge conflicts you cannot fix).
+3. **Fix.** For each actionable PR, spawn the authoring agent (the one whose bot identity matches the PR's branch, e.g. \`squad-backend[bot]\` → Kif) with the structured thread data as input. The spawned agent must read \`.copilot/skills/pr-feedback-loop/SKILL.md\` and \`.copilot/skills/git-workflow/SKILL.md\`. The agent pushes fixes to the existing branch using \`squad_workflows_push\`.
+4. **Reply and resolve threads.** After the agent pushes, reply to each addressed thread **using the same bot identity that authored the PR** (the authoring agent's roleSlug, NOT Ralph's). Use \`squad_reviews_resolve_thread(pr, threadId, commentId, reply, action)\` with reply = \`"Addressed in {sha}: {description}"\` and action = \`"addressed"\`. The reply text MUST be substantive (what was fixed and where). See \`.copilot/skills/reviewer-protocol/SKILL.md\` for the thread resolution contract. Never resolve without a reply.
+5. **Re-request review.** Call \`squad_reviews_dispatch_review(pr, role)\` for the reviewer role that left the feedback. This adds the \`review:{role}:requested\` label and posts a notification comment.
+6. **Merge gate.** Call \`squad_workflows_merge_check(pr)\`. If all-clear (approvals + CI green + 0 unresolved threads + branch current), call \`squad_workflows_merge(pr)\`. If the gate is stuck due to self-approval, read \`.copilot/skills/self-approval-fallback/SKILL.md\` for the escalation path.
+7. **Branch behind?** If merge_check fails ONLY because the branch is behind base, call \`squad_workflows_update_branch(pr)\` for that specific PR, then retry merge_check once.
+8. **Next PR.** Move to the next PR in the priority list. Repeat steps 3–7.
+9. **Wave boundary check.** After all PRs in the cycle are processed, call \`squad_workflows_wave_status(owner, repo)\`. If a wave (milestone) just completed, report to the user and pause for release coordination (see \`.copilot/skills/release-process/SKILL.md\`). Otherwise, loop back to step 1.
+
+### Rules
+
+- **Never call \`squad_workflows_update_all_branches()\` proactively.** Only call \`squad_workflows_update_branch(pr)\` on a specific PR, and only when step 7's condition is met.
+- **Thread resolution identity: use the PR author's bot, not Ralph's.** The reply must come from the same identity that wrote the code. Ralph orchestrates; the authoring bot speaks.
+- **Thread resolution order is: fix → reply → resolve.** Resolving without replying is a governance violation (see \`.copilot/skills/reviewer-protocol/SKILL.md\`).
+- **Bot identity required for all writes.** Read \`.copilot/skills/gh-auth-isolation/SKILL.md\`. Use the squad_workflows push/create_pr tools or the bot token inline form. Never fall back to ambient \`gh\` auth.
+- **Skip, don't stall.** If a PR has unresolvable blockers (merge conflicts requiring human judgment, missing human-only approval, repeated CI failures after 2 fix attempts), skip it, log why, and move to the next.
+- **Wave boundaries are a valid stop point.** When a milestone completes, pause and report. Do not continue into the next wave without acknowledgment.
 ${INSTRUCTIONS_MARKER_END}`;
 }
 

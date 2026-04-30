@@ -259,7 +259,7 @@ export async function getReviewThreads(owner, repo, pr, token) {
     }
   }`;
 
-  return ghGraphQL(query, { owner, repo, pr: String(pr) }, { token });
+  return ghGraphQL(query, { owner, repo, pr: Number(pr) }, { token });
 }
 
 /**

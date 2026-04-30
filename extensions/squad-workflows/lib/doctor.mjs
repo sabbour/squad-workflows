@@ -48,6 +48,18 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
     });
   }
 
+  // 3a. Ralph charter block
+  const ralphCharterPath = join(repoRoot, '.squad', 'agents', 'ralph', 'charter.md');
+  if (existsSync(ralphCharterPath)) {
+    const content = readFileSync(ralphCharterPath, 'utf-8');
+    const hasBlock = content.includes('<!-- squad-workflows: start -->');
+    checks.push({
+      check: 'ralph-charter',
+      status: hasBlock ? 'pass' : 'warn',
+      message: hasBlock ? 'PR feedback loop block present' : 'Missing PR feedback loop block. Run squad_workflows_init.',
+    });
+  }
+
   // 3b. Issue lifecycle override
   const lifecyclePath = join(repoRoot, '.squad', 'issue-lifecycle.md');
   if (existsSync(lifecyclePath)) {
@@ -104,6 +116,27 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
       message: refsExtension
         ? 'SKILL.md references squad-workflows tools'
         : 'SKILL.md does not reference squad-workflows tools (consider running init)',
+    });
+  }
+
+  // 5b. PR feedback loop skill
+  const feedbackSkillPath = join(repoRoot, '.copilot', 'skills', 'pr-feedback-loop', 'SKILL.md');
+  if (existsSync(feedbackSkillPath)) {
+    const content = readFileSync(feedbackSkillPath, 'utf-8');
+    const hasInitiation = content.includes('## Initiation');
+    const hasTools = content.includes('squad_workflows_address_feedback');
+    checks.push({
+      check: 'pr-feedback-loop-skill',
+      status: (hasInitiation && hasTools) ? 'pass' : 'warn',
+      message: (hasInitiation && hasTools)
+        ? 'PR feedback loop skill present with initiation section and tool references'
+        : 'PR feedback loop skill missing initiation section or tool references — run init to patch.',
+    });
+  } else {
+    checks.push({
+      check: 'pr-feedback-loop-skill',
+      status: 'info',
+      message: 'PR feedback loop skill not found at .copilot/skills/pr-feedback-loop/SKILL.md',
     });
   }
 
