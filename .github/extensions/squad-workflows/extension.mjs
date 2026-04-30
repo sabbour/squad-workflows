@@ -267,6 +267,45 @@ const session = await joinSession({
       }),
     },
     {
+      name: 'squad_workflows_address_feedback',
+      description: 'Read rejected/unresolved PR review feedback and return structured fix instructions for an agent.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          pr: { type: 'number', description: 'Pull request number' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+        },
+        required: ['pr'],
+      },
+      handler: jsonHandler(async ({ pr, owner, repo }) => {
+        const token = await getToken();
+        const { runAddressFeedback } = await lib('address-feedback.mjs');
+        return runAddressFeedback(REPO_ROOT, { pr, token, owner, repo });
+      }),
+    },
+    {
+      name: 'squad_workflows_address_all_feedback',
+      description: 'Read all unresolved PR review feedback across multiple PRs and return structured fix instructions.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          prs: { type: 'array', items: { type: 'number' }, description: 'Specific PR numbers to check. If omitted, scans all open PRs.' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          filter: { type: 'string', enum: ['changes_requested', 'all_unresolved', 'commented'], description: 'Filter by review state (default: changes_requested)' },
+        },
+        required: ['owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ prs, owner, repo, filter }) => {
+        const token = await getToken();
+        const { runAddressAllFeedback } = await lib('address-feedback.mjs');
+        return runAddressAllFeedback(REPO_ROOT, { prs, token, owner, repo, filter });
+      }),
+    },
+    {
       name: 'squad_workflows_check_ci',
       description: 'Check CI status for a PR. Reports failures with actionable context.',
       skipPermission: true,
@@ -283,6 +322,48 @@ const session = await joinSession({
         const token = await getToken();
         const { runCheckCi } = await lib('feedback.mjs');
         return runCheckCi(REPO_ROOT, { pr, token, owner, repo });
+      }),
+    },
+
+    // ── Branch Update ─────────────────────────────────────────────────────────
+    {
+      name: 'squad_workflows_update_branch',
+      description: 'Check if a PR branch is behind the base branch and update it (rebase or merge) to make it mergeable.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          pr: { type: 'number', description: 'Pull request number' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          strategy: { type: 'string', enum: ['merge', 'rebase'], description: 'How to update the branch (default: merge)' },
+        },
+        required: ['pr', 'owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ pr, owner, repo, strategy }) => {
+        const token = await getToken();
+        const { runUpdateBranch } = await lib('update-branch.mjs');
+        return runUpdateBranch(REPO_ROOT, { pr, token, owner, repo, strategy });
+      }),
+    },
+    {
+      name: 'squad_workflows_update_all_branches',
+      description: 'Check all open PR branches and update those that are behind their base branch.',
+      skipPermission: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          prs: { type: 'array', items: { type: 'number' }, description: 'Specific PR numbers. If omitted, checks all open PRs.' },
+          owner: { type: 'string', description: 'Repository owner' },
+          repo: { type: 'string', description: 'Repository name' },
+          strategy: { type: 'string', enum: ['merge', 'rebase'], description: 'How to update branches (default: merge)' },
+        },
+        required: ['owner', 'repo'],
+      },
+      handler: jsonHandler(async ({ prs, owner, repo, strategy }) => {
+        const token = await getToken();
+        const { runUpdateAllBranches } = await lib('update-branch.mjs');
+        return runUpdateAllBranches(REPO_ROOT, { prs, token, owner, repo, strategy });
       }),
     },
 
@@ -475,7 +556,7 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_create_pr',
-      description: 'Create a pull request using bot identity (opens ready for review by default). Auto-attests the write. Returns PR number and URL (never the token).',
+      description: 'Create a pull request using bot identity. Auto-attests the write. Returns PR number and URL (never the token).',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -484,7 +565,7 @@ const session = await joinSession({
           body: { type: 'string', description: 'PR body (markdown)' },
           head: { type: 'string', description: 'Head branch name' },
           base: { type: 'string', description: 'Base branch (default: dev)' },
-          draft: { type: 'boolean', description: 'Create as draft PR (default: false — opens ready for review)' },
+          draft: { type: 'boolean', description: 'Create as draft PR (default: true)' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
           roleSlug: { type: 'string', description: 'Optional role slug for token resolution' },
@@ -497,7 +578,7 @@ const session = await joinSession({
         const pr = await ghApi(`/repos/${owner}/${repo}/pulls`, {
           token,
           method: 'POST',
-          body: { title, body, head, base: base || 'dev', draft: draft === true },
+          body: { title, body, head, base: base || 'dev', draft: draft !== false },
         });
 
         // Auto-attest the write (best-effort)
