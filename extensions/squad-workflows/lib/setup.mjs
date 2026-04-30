@@ -17,6 +17,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureLabel } from './github-api.mjs';
 import { configExists, configPath, getTemplate, loadConfig } from './workflow-config.mjs';
+import { buildInstructionBlock, buildCeremoniesBlock, patchInstructionBlock } from './init.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -42,8 +43,7 @@ const LABEL_DESCRIPTIONS = {
   'estimate:XL': 'Extra large — ~20 story points, ≤80 hours (must decompose)',
 };
 
-const INSTRUCTIONS_MARKER_START = '<!-- squad-workflows: start -->';
-const INSTRUCTIONS_MARKER_END = '<!-- squad-workflows: end -->';
+// Marker constants removed — imported from init.mjs
 
 function log(msg) {
   process.stderr.write(msg + '\n');
@@ -225,59 +225,4 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
   }
 
   return results;
-}
-
-function buildInstructionBlock(config) {
-  return `${INSTRUCTIONS_MARKER_START}
-## Workflow Tools (squad-workflows extension)
-
-Use these tools for the issue-to-merge lifecycle:
-
-**Planning:** \`squad_workflows_estimate\` → \`squad_workflows_decompose\` (if L/XL)
-**Design:** \`squad_workflows_post_design_proposal\` → \`squad_workflows_check_design_approval\`
-**Review:** \`squad_workflows_check_feedback\` + \`squad_workflows_check_ci\`
-**Merge:** \`squad_workflows_merge_check\` → \`squad_workflows_merge\`
-**Utility:** \`squad_workflows_fast_lane\`, \`squad_workflows_board_sync\`, \`squad_workflows_wave_status\`, \`squad_workflows_status\`
-
-### Fast Lane
-Issues labeled ${config.designProposal.fastLaneLabels.map(l => '`' + l + '`').join(' or ')} skip Design Proposal and Design Review.
-
-### Wave-Based Delivery
-Large features must be decomposed into waves (GitHub milestones). Each wave is independently shippable and produces a releasable changeset. Max issue estimate per wave: ${config.waves.maxIssueEstimate}.
-
-### Branch Conventions
-- Base branch: \`${config.branchModel.base}\`
-- Branch naming: \`squad/{issue-number}-{kebab-case-slug}\`
-- Always use worktrees: \`git worktree add .worktrees/{slug} -b squad/{issue}-{slug} origin/${config.branchModel.base}\`
-${INSTRUCTIONS_MARKER_END}`;
-}
-
-function buildCeremoniesBlock(config) {
-  return `${INSTRUCTIONS_MARKER_START}
-### Planning Ceremony (squad-workflows)
-
-| Step | Tool | Gate? |
-|------|------|-------|
-| Estimate issue | \`squad_workflows_estimate\` | Auto-applies label |
-| Decompose (if L/XL) | \`squad_workflows_decompose\` | Creates milestones + child issues |
-| Fast-lane check | \`squad_workflows_fast_lane\` | Skips DP+DR if eligible |
-
-### Wave Completion Ceremony
-
-When the last issue in a wave merges:
-1. \`squad_workflows_wave_status\` reports wave complete
-2. Run \`npm run changeset\` scoped to wave changes
-3. Prepare release with \`squad_workflows_merge\` nudge
-${INSTRUCTIONS_MARKER_END}`;
-}
-
-function patchInstructionBlock(content, block) {
-  const startIdx = content.indexOf(INSTRUCTIONS_MARKER_START);
-  const endIdx = content.indexOf(INSTRUCTIONS_MARKER_END);
-
-  if (startIdx !== -1 && endIdx !== -1) {
-    return content.slice(0, startIdx) + block + content.slice(endIdx + INSTRUCTIONS_MARKER_END.length);
-  }
-
-  return content.trimEnd() + '\n\n' + block + '\n';
 }

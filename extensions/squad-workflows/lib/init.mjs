@@ -121,7 +121,7 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
   return results;
 }
 
-function buildInstructionBlock(config) {
+export function buildInstructionBlock(config) {
   return `${INSTRUCTIONS_MARKER_START}
 ## Workflow Tools (squad-workflows extension)
 
@@ -146,7 +146,7 @@ Large features must be decomposed into waves (GitHub milestones). Each wave is i
 ${INSTRUCTIONS_MARKER_END}`;
 }
 
-function buildCeremoniesBlock(config) {
+export function buildCeremoniesBlock(config) {
   const fastLaneLabels = config.designProposal.fastLaneLabels.map(l => '`' + l + '`').join(' or ');
   const approvals = config.labels.designApprovals.map(l => '`' + l + '`').join(', ');
   return `${INSTRUCTIONS_MARKER_START}
@@ -190,7 +190,7 @@ When the last issue in a wave merges:
 ${INSTRUCTIONS_MARKER_END}`;
 }
 
-function patchInstructionBlock(content, block) {
+export function patchInstructionBlock(content, block) {
   const startIdx = content.indexOf(INSTRUCTIONS_MARKER_START);
   const endIdx = content.indexOf(INSTRUCTIONS_MARKER_END);
 
