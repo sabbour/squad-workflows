@@ -6,8 +6,32 @@
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { ensureLabel } from './github-api.mjs';
 import { configExists, configPath, getTemplate, loadConfig } from './workflow-config.mjs';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Resolve owner/repo from git remote if not provided via CLI flags.
+ */
+async function resolveRepo(repoRoot, owner, repo) {
+  if (owner && repo) return { owner, repo };
+
+  try {
+    const { stdout } = await execFileAsync('gh', ['repo', 'view', '--json', 'owner,name'], {
+      cwd: repoRoot,
+      timeout: 10_000,
+    });
+    const data = JSON.parse(stdout);
+    return { owner: data.owner.login, repo: data.name };
+  } catch {
+    throw new Error(
+      'Could not determine repository owner/name. Pass --owner and --repo, or run from a directory with a GitHub remote.'
+    );
+  }
+}
 
 const LABEL_COLORS = {
   'estimate:S': '0e8a16',
@@ -18,6 +42,7 @@ const LABEL_COLORS = {
   'architecture:approved': '0e8a16',
   'security:approved': '0e8a16',
   'codereview:approved': '0e8a16',
+  'docs:approved': '0e8a16',
 };
 
 const LABEL_DESCRIPTIONS = {
@@ -32,6 +57,11 @@ const INSTRUCTIONS_MARKER_END = '<!-- squad-workflows: end -->';
 
 export async function runInit(repoRoot, { token, owner, repo, force }) {
   const results = { labels: [], config: null, instructions: [] };
+
+  // Resolve owner/repo from git remote if not explicitly provided
+  const resolved = await resolveRepo(repoRoot, owner, repo);
+  owner = resolved.owner;
+  repo = resolved.repo;
 
   // 1. Write config
   const cfgPath = configPath(repoRoot);

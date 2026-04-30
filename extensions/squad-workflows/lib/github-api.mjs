@@ -4,10 +4,43 @@
  * All calls use token-per-call pattern (no exported/persisted tokens).
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Run gh with stdin input via spawn (needed for --input -).
+ */
+function spawnGh(args, { env, cwd, input, timeout = 30_000 }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('gh', args, { env, cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (d) => (stdout += d));
+    child.stderr.on('data', (d) => (stderr += d));
+
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`Command timed out after ${timeout}ms`));
+    }, timeout);
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(`Command failed: gh ${args.join(' ')}\n${stderr}`));
+      } else {
+        resolve({ stdout });
+      }
+    });
+
+    if (input) {
+      child.stdin.write(input);
+    }
+    child.stdin.end();
+  });
+}
 
 /**
  * Call the GitHub REST API via `gh api`.
@@ -20,7 +53,10 @@ const execFileAsync = promisify(execFile);
  * @param {string} [opts.cwd] - working directory
  */
 export async function ghApi(endpoint, { token, method, body, fields, cwd } = {}) {
-  const args = ['api', endpoint, '--paginate'];
+  const args = ['api', endpoint];
+
+  // --paginate is only valid for GET requests
+  if (!method || method === 'GET') args.push('--paginate');
 
   if (method) args.push('-X', method);
 
@@ -37,13 +73,18 @@ export async function ghApi(endpoint, { token, method, body, fields, cwd } = {})
   const env = { ...process.env, GH_TOKEN: token };
   const input = body ? JSON.stringify(body) : undefined;
 
-  const { stdout } = await execFileAsync('gh', args, {
-    env,
-    cwd,
-    input,
-    maxBuffer: 10 * 1024 * 1024,
-    timeout: 30_000,
-  });
+  let stdout;
+  if (body) {
+    // Use spawn to pipe stdin for request body
+    ({ stdout } = await spawnGh(args, { env, cwd, input, timeout: 30_000 }));
+  } else {
+    ({ stdout } = await execFileAsync('gh', args, {
+      env,
+      cwd,
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 30_000,
+    }));
+  }
 
   try {
     return JSON.parse(stdout);
