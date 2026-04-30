@@ -38,17 +38,17 @@ Examples:
    gh issue edit {number} --add-label "status:in-progress"
    ```
 
-3. **Create draft PR targeting dev:**
+3. **Create PR targeting dev (after work is done):**
    ```bash
-   gh pr create --base dev --title "{description}" --body "Closes #{issue-number}" --draft
+   gh pr create --base dev --title "{description}" --body "Closes #{issue-number}"
    ```
+   Or via bot identity: `squad_workflows_create_pr`
 
 4. **Do the work.** Make changes, write tests, commit with issue reference.
 
-5. **Push and mark ready:**
+5. **Push:**
    ```bash
    git push -u origin squad/{issue-number}-{slug}
-   gh pr ready
    ```
 
 6. **After merge to dev:**
@@ -103,7 +103,7 @@ git add -A && git commit -m "fix: stamp bug (#195)"
 git push -u origin squad/195-fix-stamp-bug
 
 # Create PR targeting dev
-gh pr create --base dev --title "fix: stamp bug" --body "Closes #195" --draft
+gh pr create --base dev --title "fix: stamp bug" --body "Closes #195"
 ```
 
 All PRs target `dev` independently. Agents never interfere with each other's filesystem.

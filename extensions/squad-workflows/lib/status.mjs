@@ -100,10 +100,10 @@ function getNextSteps(phase, labels, config, fastLane, issue) {
       steps.push(`git worktree add .worktrees/${issue} -b squad/${issue}-slug origin/${config.branchModel.base}`);
       break;
     case 'in-progress':
-      steps.push('Create draft PR when ready: gh pr create --draft --base ' + config.branchModel.base);
+      steps.push('Push and create PR: squad_workflows_push then squad_workflows_create_pr --base ' + config.branchModel.base);
       break;
     case 'pr-open':
-      steps.push('Mark PR ready and dispatch reviews: gh pr ready');
+      steps.push('Dispatch reviews: squad_reviews_dispatch_review');
       break;
     case 'in-review':
       steps.push('Check feedback: squad_workflows_check_feedback');

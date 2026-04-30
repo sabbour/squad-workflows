@@ -475,7 +475,7 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_create_pr',
-      description: 'Create a pull request using bot identity. Auto-attests the write. Returns PR number and URL (never the token).',
+      description: 'Create a pull request using bot identity (opens ready for review by default). Auto-attests the write. Returns PR number and URL (never the token).',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -484,7 +484,7 @@ const session = await joinSession({
           body: { type: 'string', description: 'PR body (markdown)' },
           head: { type: 'string', description: 'Head branch name' },
           base: { type: 'string', description: 'Base branch (default: dev)' },
-          draft: { type: 'boolean', description: 'Create as draft PR (default: true)' },
+          draft: { type: 'boolean', description: 'Create as draft PR (default: false — opens ready for review)' },
           owner: { type: 'string', description: 'Repository owner' },
           repo: { type: 'string', description: 'Repository name' },
           roleSlug: { type: 'string', description: 'Optional role slug for token resolution' },
@@ -497,7 +497,7 @@ const session = await joinSession({
         const pr = await ghApi(`/repos/${owner}/${repo}/pulls`, {
           token,
           method: 'POST',
-          body: { title, body, head, base: base || 'dev', draft: draft !== false },
+          body: { title, body, head, base: base || 'dev', draft: draft === true },
         });
 
         // Auto-attest the write (best-effort)
