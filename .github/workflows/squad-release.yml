@@ -18,16 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22 + npm 11.5+ required for OIDC trusted publishing
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
+          node-version: 22
 
       - run: npm ci
 
       - run: npm test
 
-      # Changesets: create version PR if changesets exist, or detect publish needed
+      # Changesets: create version PR if changesets exist
       - name: Create Release PR or detect publish
         if: github.ref == 'refs/heads/main'
         id: changesets
@@ -39,16 +39,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Publish to npmjs using OIDC trusted publishing (no token needed).
-      # setup-node writes .npmrc with _authToken placeholder — strip it so
-      # npm falls through to its native OIDC token exchange.
+      # Publish to npmjs using OIDC trusted publishing.
+      # Requires npm >= 11.5.1 (ships with Node 22) — no token needed.
       - name: Publish to npmjs (OIDC trusted publishing)
         if: github.ref == 'refs/heads/main'
         id: publish-npm
         run: |
-          # Strip any auth token from .npmrc so npm uses OIDC
-          sed -i '/:_authToken/d' "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
-          # Check if current version is already published
+          echo "npm version: $(npm --version)"
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           PUBLISHED=$(npm view @sabbour/squad-workflows versions --json 2>/dev/null || echo "[]")
           if echo "$PUBLISHED" | grep -q "\"$LOCAL_VERSION\""; then
@@ -66,7 +63,7 @@ jobs:
         if: steps.publish-npm.outputs.published == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://npm.pkg.github.com
 
       - name: Publish to GitHub Packages
