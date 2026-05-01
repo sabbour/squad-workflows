@@ -28,6 +28,14 @@ jobs:
       - run: npm test
 
       # On main: publishes with --tag latest (default changesets behavior)
+      # Uses npm OIDC trusted publishing (no NPM_TOKEN needed).
+      # setup-node writes .npmrc with ${NODE_AUTH_TOKEN} placeholder;
+      # leaving it unset lets npm request an OIDC publish token automatically.
+      - name: Remove auth placeholder from .npmrc
+        run: sed -i '/:_authToken/d' "$NPM_CONFIG_USERCONFIG"
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/.npmrc
+
       - name: Create Release PR or Publish (npmjs)
         if: github.ref == 'refs/heads/main'
         id: changesets-stable
@@ -38,7 +46,6 @@ jobs:
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
 
 
