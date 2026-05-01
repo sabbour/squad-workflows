@@ -40,11 +40,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Publish to npmjs using OIDC trusted publishing.
-      # Requires npm >= 11.5.1 (ships with Node 22) — no token needed.
+      # Requires npm >= 11.5.1 — Node 22 ships with 10.9.x, so upgrade explicitly.
       - name: Publish to npmjs (OIDC trusted publishing)
         if: github.ref == 'refs/heads/main'
         id: publish-npm
         run: |
+          npm install -g npm@latest
           echo "npm version: $(npm --version)"
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           PUBLISHED=$(npm view @sabbour/squad-workflows versions --json 2>/dev/null || echo "[]")
