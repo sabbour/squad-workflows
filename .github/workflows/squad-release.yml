@@ -21,7 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - run: npm ci
 
@@ -39,8 +38,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Publish to npmjs with granular access token
-      - name: Publish to npmjs
+      # Publish to npmjs using OIDC trusted publishing.
+      # Runner's npm 10.9.x doesn't support OIDC — use npx to run npm 11.5+
+      - name: Publish to npmjs (OIDC trusted publishing)
         if: github.ref == 'refs/heads/main'
         id: publish-npm
         run: |
@@ -50,12 +50,10 @@ jobs:
             echo "v$LOCAL_VERSION already published, skipping."
             echo "published=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Publishing @sabbour/squad-workflows@$LOCAL_VERSION..."
-            npm publish --provenance --access public
+            echo "Publishing @sabbour/squad-workflows@$LOCAL_VERSION with npm@latest..."
+            npx npm@latest publish --provenance --access public
             echo "published=true" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
 
       # Publish to GitHub Packages (mirror)
