@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+### Minor Changes
+
+- Refine workflow gate synchronization with role-scoped approval invalidation for real content changes, approval preservation for base-sync and merge-base-only synchronize events, batched feedback response behavior for one-pass fixes, and docs gate migration to `docs:not-applicable` with no active `skip-docs` bypass guidance.
+
 ## 1.2.0
 
 ### Minor Changes

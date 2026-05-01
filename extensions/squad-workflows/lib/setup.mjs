@@ -34,6 +34,8 @@ const LABEL_COLORS = {
   'security:approved': '0e8a16',
   'codereview:approved': '0e8a16',
   'docs:approved': '0e8a16',
+  'docs:not-applicable': 'bfdadc',
+  'docs:rejected': 'd93f0b',
 };
 
 const LABEL_DESCRIPTIONS = {
@@ -135,6 +137,7 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
       ...config.labels.estimates,
       ...config.labels.fastLane,
       ...config.labels.designApprovals,
+      ...(config.labels.reviewSignals || []),
     ];
     const unique = [...new Set(allLabels)];
 

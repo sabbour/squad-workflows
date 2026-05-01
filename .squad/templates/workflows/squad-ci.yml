@@ -1,24 +1,258 @@
-name: Squad CI
+name: CI
 
 on:
-  pull_request:
-    branches: [dev, preview, main, insider]
-    types: [opened, synchronize, reopened]
   push:
-    branches: [dev, insider]
+    branches: ["*"]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
-  test:
+  changes:
+    name: Detect changed paths
     runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.filter.outputs.docs_only }}
+    steps:
+      - name: Classify PR file changes
+        id: filter
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName !== 'pull_request') {
+              core.setOutput('docs_only', 'false');
+              core.info(`event=${context.eventName} — running full CI`);
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            const paths = files.map(file => file.filename);
+            const isDocsLike = (path) =>
+              path.endsWith('.md') ||
+              path.endsWith('.mdx') ||
+              path.startsWith('docs/') ||
+              path.startsWith('docs-site/') ||
+              path.startsWith('.squad/') ||
+              path.startsWith('.changeset/');
+            const docsOnly = paths.length > 0 && paths.every(isDocsLike);
+            core.setOutput('docs_only', String(docsOnly));
+            core.info(`changed=${paths.length} docs_only=${docsOnly}`);
+
+
+  stale-approvals:
+    name: Clear stale approval labels
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Clear approvals for real content changes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const before = context.payload.before;
+            const after = context.payload.after;
+            const DOCS_LIKE_RE = /(\.mdx?$)|^docs\/|^docs-site\/|^\.squad\/|^\.changeset\//i;
+            const TEST_LIKE_RE_LIST = [
+              /(^|\/)(__tests__|test|tests)(\/|$)/i,
+              /(^|[._-])(test|spec)\.[cm]?[jt]sx?$/i,
+            ];
+            const SECURITY_RE_LIST = [
+              /^\.github\/workflows\//i,
+              /(^|[\/._-])(auth|guardrail|guardrails|security)([\/._-]|$)/i,
+            ];
+            const ARCHITECTURE_RE_LIST = [
+              /^docs\/adr\//i,
+              /^\.squad\/decisions/i,
+              /(^|\/)package(-lock)?\.json$/i,
+              /(^|\/)pnpm-lock\.yaml$/i,
+              /(^|\/)yarn\.lock$/i,
+              /(^|\/)extension\.mjs$/i,
+              /(^|\/)workflow-config\.mjs$/i,
+              /(^|\/)(api|schema|schemas|contract|contracts)(\/|$)/i,
+              /^packages\/[^/]+\/(package\.json|src\/index\.|src\/.*schema)/i,
+              /(^|[\/._-])(architecture|architectural|adr|api-contract|boundary|boundaries)([\/._-]|$)/i,
+            ];
+            const PRODUCT_CODE_RE = /\.(mjs|cjs|js|jsx|ts|tsx|json|ya?ml|sh)$/i;
+
+            function fileSig(file) {
+              return `${file.status}:${file.sha || file.patch || ''}`;
+            }
+
+            function mapFiles(compareResult) {
+              return new Map((compareResult.data.files || []).map((file) => [file.filename, fileSig(file)]));
+            }
+
+            function changedBetween(beforeCompare, afterCompare) {
+              const beforeMap = mapFiles(beforeCompare);
+              const afterMap = mapFiles(afterCompare);
+              const paths = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+              return [...paths].filter((path) => beforeMap.get(path) !== afterMap.get(path)).sort();
+            }
+
+            async function getSyncChangedPaths() {
+              if (!before || !after || !pr?.base?.sha || before === after) {
+                return { pureBaseSync: false, paths: null };
+              }
+
+              try {
+                const [beforeCompare, afterCompare] = await Promise.all([
+                  github.rest.repos.compareCommitsWithBasehead({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    basehead: `${pr.base.sha}...${before}`,
+                  }),
+                  github.rest.repos.compareCommitsWithBasehead({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    basehead: `${pr.base.sha}...${after}`,
+                  }),
+                ]);
+                const paths = changedBetween(beforeCompare, afterCompare);
+                return { pureBaseSync: paths.length === 0, paths };
+              } catch (error) {
+                core.warning(`Could not compare PR diff delta (${error.message}); falling back to pushed commit range.`);
+              }
+
+              try {
+                const pushed = await github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${before}...${after}`,
+                });
+                return { pureBaseSync: false, paths: (pushed.data.files || []).map((file) => file.filename).sort() };
+              } catch (error) {
+                core.warning(`Could not compare pushed range (${error.message}); falling back to full PR file list.`);
+              }
+
+              try {
+                const files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  per_page: 100,
+                });
+                return { pureBaseSync: false, paths: files.map((file) => file.filename).sort() };
+              } catch (error) {
+                core.warning(`Could not list PR files (${error.message}); invalidating non-architecture review domains.`);
+                return { pureBaseSync: false, paths: null };
+              }
+            }
+
+            function anyPathMatches(path, patterns) {
+              return patterns.some((pattern) => pattern.test(path));
+            }
+
+            function labelsToInvalidate(paths, labelSet) {
+              if (!paths) {
+                return ['codereview:approved', 'security:approved', 'docs:approved', 'docs:not-applicable'];
+              }
+
+              const domains = new Set();
+              for (const path of paths) {
+                const docsLike = DOCS_LIKE_RE.test(path);
+                const testLike = anyPathMatches(path, TEST_LIKE_RE_LIST);
+                const securityLike = anyPathMatches(path, SECURITY_RE_LIST);
+                const architectureLike = anyPathMatches(path, ARCHITECTURE_RE_LIST);
+                const productCodeLike = !docsLike && !testLike && PRODUCT_CODE_RE.test(path);
+
+                if (securityLike && !architectureLike) domains.add('security');
+                if (architectureLike) domains.add('architecture');
+                if (docsLike || (productCodeLike && !securityLike && !architectureLike)) domains.add('docs');
+                if (productCodeLike && !securityLike && !architectureLike) domains.add('codereview');
+              }
+
+              const labels = [];
+              if (domains.has('codereview')) labels.push('codereview:approved');
+              if (domains.has('architecture')) labels.push('architecture:approved');
+              if (domains.has('security')) labels.push('security:approved');
+              if (domains.has('docs')) labels.push('docs:approved', 'docs:not-applicable');
+              return labels;
+            }
+
+            const sync = await getSyncChangedPaths();
+            if (sync.pureBaseSync) {
+              core.info('Pure base-sync branch update detected; preserving all approval labels.');
+              return;
+            }
+
+            const presentLabels = new Set((pr.labels || []).map((label) => label.name));
+            const staleLabels = labelsToInvalidate(sync.paths, presentLabels).filter((label) => presentLabels.has(label));
+            if (staleLabels.length === 0) {
+              core.info(`No approval labels matched affected domains for synchronize paths: ${(sync.paths || []).join(', ') || '(unknown)'}`);
+              return;
+            }
+
+            for (const label of staleLabels) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  name: label,
+                });
+                core.info(`Cleared stale approval label: ${label}`);
+              } catch (error) {
+                if (error.status === 404) {
+                  core.info(`Approval label already absent: ${label}`);
+                  continue;
+                }
+                throw error;
+              }
+            }
+            core.info(`Cleared ${staleLabels.length} stale approval label(s) for affected synchronize domains.`);
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
+          cache: npm
 
-      - name: Run tests
-        run: node --test test/*.test.cjs
+      - run: npm ci
+
+      - run: npm test
+
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    needs: [changes, stale-approvals, test]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          changes_result="${{ needs.changes.result }}"
+          stale_approvals_result="${{ needs['stale-approvals'].result }}"
+          test_result="${{ needs.test.result }}"
+
+          if [[ "$changes_result" != "success" ]]; then
+            echo "CI failed: changes=${changes_result}"
+            exit 1
+          fi
+          if [[ ! "$stale_approvals_result" =~ ^(success|skipped)$ ]]; then
+            echo "CI failed: stale-approvals=${stale_approvals_result}"
+            exit 1
+          fi
+          if [[ ! "$test_result" =~ ^(success|skipped)$ ]]; then
+            echo "CI failed: test=${test_result}"
+            exit 1
+          fi
+          echo "CI passed: changes=${changes_result}, stale-approvals=${stale_approvals_result}, test=${test_result}"

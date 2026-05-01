@@ -79,7 +79,8 @@ Track review progress:
 
 - `squad_workflows_check_feedback` — lists unresolved review threads
 - `squad_workflows_check_ci` — checks CI status with failure details
-- Use `squad_reviews_resolve_thread` to close threads (reply before resolve!)
+- Batch all related feedback for a PR into one implementation pass, one validation run, and one commit before pushing.
+- Prefer one consolidated PR comment/update summarizing the batch; then use `squad_reviews_resolve_thread` to close individual threads (reply before resolve!) with concise references to the batch.
 
 ### 8) Merge
 

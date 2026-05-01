@@ -38,13 +38,14 @@ const DEFAULTS = {
     estimates: ['estimate:S', 'estimate:M', 'estimate:L', 'estimate:XL'],
     fastLane: ['estimate:S', 'squad:chore-auto'],
     designApprovals: ['architecture:approved', 'security:approved', 'codereview:approved', 'docs:approved'],
+    reviewSignals: ['docs:not-applicable', 'docs:rejected'],
     types: ['type:feature', 'type:bug', 'type:spike', 'type:docs', 'type:chore', 'type:epic'],
     priorities: ['priority:p0', 'priority:p1', 'priority:p2'],
   },
   reviewExemptions: {
     docsOnly: {
-      paths: ['docs/**', '**/*.md', '.squad/**', '.changeset/**'],
-      skipReviews: ['security:approved'],
+      paths: ['docs/**', 'docs-site/**', '**/*.md', '**/*.mdx', '.squad/**', '.changeset/**'],
+      skipReviews: ['security:approved', 'architecture:approved', 'docs:approved'],
     },
   },
   board: {

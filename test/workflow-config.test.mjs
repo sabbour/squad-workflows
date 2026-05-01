@@ -12,6 +12,7 @@ test('workflow-config: loadConfig returns defaults when no config file', async (
   assert.deepEqual(config.estimates.L, { points: 8, maxHours: 24, mustDecompose: true });
   assert.deepEqual(config.approvalFallback['docs:approved'], ['architecture', 'lead', 'codereview']);
   assert.deepEqual(config.fastLaneScope, ['changeset', 'design-proposal']);
+  assert.deepEqual(config.labels.reviewSignals, ['docs:not-applicable', 'docs:rejected']);
 });
 
 test('workflow-config: isFastLane detects estimate:S', async () => {

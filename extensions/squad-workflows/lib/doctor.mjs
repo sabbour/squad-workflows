@@ -80,7 +80,9 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
     if (config) {
       const allLabels = [...new Set([
         ...config.labels.estimates,
+        ...config.labels.fastLane,
         ...config.labels.designApprovals,
+        ...(config.labels.reviewSignals || []),
       ])];
 
       try {

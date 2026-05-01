@@ -157,8 +157,8 @@ The loop follows a 9-step sequence:
 
 1. **Scan** — Fetch unresolved review threads (thread ID, reviewer, file, line, comment)
 2. **Prioritize** — Sort threads by blocker severity and assigned reviewer
-3. **Fix Code** — Implementing agent reads the feedback and pushes fixes
-4. **Reply + Resolve** — Agent posts a reply to each thread (`"Addressed in {sha}: {description}"`) then resolves it
+3. **Fix Code** — Implementing agent batches all related feedback into one implementation pass, validates once, and pushes one commit
+4. **Consolidate + Resolve** — Agent posts one consolidated PR update where possible, then replies to and resolves individual threads (`"Addressed in {sha}: {description}"`)
 5. **Re-request** — If review was requested from a specific reviewer, re-request it
 6. **Merge Gate** — Call `merge_check` to validate all gates (approvals, threads, CI, changeset)
 7. **Branch Behind** — If base branch moved, call `update_branch` to sync

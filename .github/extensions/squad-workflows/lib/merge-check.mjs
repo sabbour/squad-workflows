@@ -87,9 +87,16 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
   const files = await getPRFiles(owner, repo, pr, token);
   const filePaths = files.map((f) => f.filename);
 
-  // Check review exemptions (e.g., docs-only PRs skip security review)
-  const exemptReviews = getExemptReviews(config, filePaths);
   const prLabels = (prData.labels || []).map((l) => l.name);
+  const labelSet = new Set(prLabels);
+  const docsOnly = isDocsOnlyPr(filePaths);
+  const sensitive = hasSensitivePaths(filePaths);
+  const architectureLabeled = labelSet.has('architecture');
+
+  // Check review exemptions (e.g., docs-only PRs skip security/docs/architecture review)
+  const exemptReviews = docsOnly && !sensitive && !architectureLabeled
+    ? ['security:approved', 'architecture:approved', 'docs:approved']
+    : getExemptReviews(config, filePaths);
   const fastLaneLabels = config.designProposal?.fastLaneLabels || [];
   const fastLaneScope = config.fastLaneScope || [];
   const fastLaneActive = prLabels.some((label) => fastLaneLabels.includes(label));
@@ -111,9 +118,17 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
   // squad:chore-auto and other fast-lane labels can only relax checks listed in
   // config.fastLaneScope. They NEVER bypass architecture/security/docs/codereview
   // approval gates, even when the PR is otherwise fast-lane eligible.
-  const archApproved = prLabels.includes('architecture:approved');
-  const secApproved = prLabels.includes('security:approved');
+  const codeReviewApproved = labelSet.has('codereview:approved');
+  const archApproved = labelSet.has('architecture:approved');
+  const secApproved = labelSet.has('security:approved');
+  const docsApproved = labelSet.has('docs:approved');
+  const docsNotApplicable = labelSet.has('docs:not-applicable');
+  const docsRejected = labelSet.has('docs:rejected');
+  const architectureRequired = architectureLabeled;
+  const securityRequired = !docsOnly || sensitive || architectureLabeled;
   const securityExempt = exemptReviews.includes('security:approved');
+  const architectureExempt = exemptReviews.includes('architecture:approved');
+  const docsSignalExempt = exemptReviews.includes('docs:approved');
 
   if (prLabels.includes('squad:chore-auto')) {
     const scopeSummary = fastLaneScope.length > 0 ? fastLaneScope.join(', ') : 'no checks';
@@ -122,29 +137,49 @@ export async function runMergeCheck(repoRoot, { pr, token, owner, repo }) {
     passed.push(`Fast-lane scope limited to: ${fastLaneScope.join(', ')}; review approvals still required`);
   }
 
-  if (!archApproved) {
+  if (!codeReviewApproved) {
+    blockers.push({ check: 'codereview-approval', message: 'Missing codereview:approved label. Code review required.' });
+  } else {
+    passed.push('Code review approved');
+  }
+
+  if (architectureRequired && !archApproved && !architectureExempt) {
     blockers.push({ check: 'architecture-approval', message: 'Missing architecture:approved label. Architecture review required.' });
+  } else if (architectureExempt || !architectureRequired) {
+    passed.push('Architecture review exempt');
   } else {
     passed.push('Architecture approved');
   }
 
-  if (!secApproved && !securityExempt) {
+  if (securityRequired && !secApproved && !securityExempt) {
     blockers.push({ check: 'security-approval', message: 'Missing security:approved label. Security review required.' });
-  } else if (securityExempt) {
-    passed.push('Security review exempt (docs-only)');
+  } else if (securityExempt || !securityRequired) {
+    passed.push('Security review exempt');
   } else {
     passed.push('Security approved');
   }
 
+  if (docsRejected) {
+    blockers.push({ check: 'docs-rejected', message: 'docs:rejected is present. Docs reviewer rejection blocks merge.' });
+  } else if (docsSignalExempt) {
+    passed.push('Docs signal exempt (docs-only)');
+  } else if (!docsApproved && !docsNotApplicable) {
+    blockers.push({ check: 'docs-signal', message: 'Missing docs-impact signal. Add docs:approved or docs:not-applicable.' });
+  } else {
+    passed.push(docsApproved ? 'Docs approved' : 'Docs marked not applicable');
+  }
+
   // 7. Check for changeset (look for .changeset/*.md files in PR diff)
   const hasChangeset = files.some((f) => f.filename.startsWith('.changeset/') && f.filename.endsWith('.md'));
-  const canSkipChangeset = fastLaneScope.includes('changeset')
-    && (prLabels.includes('estimate:S') || prLabels.includes('squad:chore-auto'));
+  const canSkipChangeset = docsOnly || (
+    fastLaneScope.includes('changeset') &&
+    (prLabels.includes('estimate:S') || prLabels.includes('squad:chore-auto'))
+  );
   if (!hasChangeset) {
     if (!canSkipChangeset) {
       blockers.push({ check: 'changeset', message: 'No changeset found. Run `npm run changeset` in the worktree.' });
     } else {
-      passed.push('Changeset exempt (fast-lane scope)');
+      passed.push(docsOnly ? 'Changeset exempt (docs-only)' : 'Changeset exempt (fast-lane scope)');
     }
   } else {
     passed.push('Changeset present');
@@ -179,4 +214,18 @@ function matchesRoleLogin(login, role) {
   return typeof login === 'string' && typeof role === 'string'
     ? login.toLowerCase().includes(role.toLowerCase())
     : false;
+}
+
+const DOCS_LIKE_RE = /(\.mdx?$)|^docs\/|^docs-site\/|^\.squad\/|^\.changeset\//i;
+const SENSITIVE_RE_LIST = [
+  /^\.github\/workflows\//i,
+  /(^|[\/._-])(auth|guardrail|guardrails|security)([\/._-]|$)/i,
+];
+
+function isDocsOnlyPr(paths) {
+  return paths.length > 0 && paths.every((path) => DOCS_LIKE_RE.test(path));
+}
+
+function hasSensitivePaths(paths) {
+  return paths.some((path) => SENSITIVE_RE_LIST.some((pattern) => pattern.test(path)));
 }

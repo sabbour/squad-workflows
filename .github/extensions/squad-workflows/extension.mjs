@@ -268,7 +268,7 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_address_feedback',
-      description: 'Read rejected/unresolved PR review feedback and return structured fix instructions for an agent.',
+      description: 'Read rejected/unresolved PR review feedback and return batched fix instructions for one implementation pass, one commit, and consolidated updates where possible.',
       skipPermission: true,
       parameters: {
         type: 'object',
@@ -287,7 +287,7 @@ const session = await joinSession({
     },
     {
       name: 'squad_workflows_address_all_feedback',
-      description: 'Read all unresolved PR review feedback across multiple PRs and return structured fix instructions.',
+      description: 'Read all unresolved PR review feedback across multiple PRs and return batched per-PR fix instructions.',
       skipPermission: true,
       parameters: {
         type: 'object',

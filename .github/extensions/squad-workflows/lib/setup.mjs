@@ -17,7 +17,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureLabel } from './github-api.mjs';
 import { configExists, configPath, getTemplate, loadConfig } from './workflow-config.mjs';
-import { buildInstructionBlock, buildCeremoniesBlock, patchInstructionBlock } from './init.mjs';
+import { buildInstructionBlock, buildRalphCharterBlock, buildCeremoniesBlock, buildLifecycleOverrideBlock, patchInstructionBlock } from './init.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -34,6 +34,8 @@ const LABEL_COLORS = {
   'security:approved': '0e8a16',
   'codereview:approved': '0e8a16',
   'docs:approved': '0e8a16',
+  'docs:not-applicable': 'bfdadc',
+  'docs:rejected': 'd93f0b',
 };
 
 const LABEL_DESCRIPTIONS = {
@@ -135,6 +137,7 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
       ...config.labels.estimates,
       ...config.labels.fastLane,
       ...config.labels.designApprovals,
+      ...(config.labels.reviewSignals || []),
     ];
     const unique = [...new Set(allLabels)];
 
@@ -178,6 +181,20 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
     if (!json) log(`  ⏭ No copilot-instructions.md found`);
   }
 
+  // Patch Ralph's charter
+  const ralphCharterPath = join(target, '.squad', 'agents', 'ralph', 'charter.md');
+  if (existsSync(ralphCharterPath)) {
+    const patched = patchInstructionBlock(
+      readFileSync(ralphCharterPath, 'utf-8'),
+      buildRalphCharterBlock()
+    );
+    writeFileSync(ralphCharterPath, patched);
+    results.instructions.push('ralph/charter.md');
+    if (!json) log(`  ✓ Patched ralph/charter.md`);
+  } else {
+    if (!json) log(`  ⏭ No ralph/charter.md found`);
+  }
+
   // Patch ceremonies.md
   const ceremoniesPath = join(target, '.squad', 'ceremonies.md');
   if (existsSync(ceremoniesPath)) {
@@ -190,6 +207,20 @@ export async function runSetup(repoRoot, { token, owner, repo, force, json }) {
     if (!json) log(`  ✓ Patched ceremonies.md`);
   } else {
     if (!json) log(`  ⏭ No ceremonies.md found`);
+  }
+
+  // Patch issue-lifecycle.md
+  const lifecyclePath = join(target, '.squad', 'issue-lifecycle.md');
+  if (existsSync(lifecyclePath)) {
+    const patched = patchInstructionBlock(
+      readFileSync(lifecyclePath, 'utf-8'),
+      buildLifecycleOverrideBlock()
+    );
+    writeFileSync(lifecyclePath, patched);
+    results.instructions.push('issue-lifecycle.md');
+    if (!json) log(`  ✓ Patched issue-lifecycle.md`);
+  } else {
+    if (!json) log(`  ⏭ No issue-lifecycle.md found`);
   }
 
   results.phases.push('instructions');

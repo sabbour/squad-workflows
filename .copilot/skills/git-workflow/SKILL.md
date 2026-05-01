@@ -237,4 +237,4 @@ Reviewer order matters. The first available fallback reviewer should review and 
 
 `estimate:S` and `squad:chore-auto` are fast-lane labels, but their scope is intentionally narrow. They only relax changeset requirements and design-proposal requirements.
 
-They never bypass review approval gates. Architecture, security, docs, and code review approvals still apply unless a separate review exemption rule explicitly skips a specific approval.
+They never bypass review approval gates. Code review still applies to every PR. Security and architecture apply to code-bearing PRs (or docs-only PRs with sensitive/architecture triggers), while docs-only PRs are exempt from the docs signal. Code-bearing PRs must carry `docs:approved` or `docs:not-applicable`; `docs:rejected` blocks every PR class.

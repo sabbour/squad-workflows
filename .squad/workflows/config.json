@@ -59,6 +59,10 @@
       "security:approved",
       "codereview:approved",
       "docs:approved"
+    ],
+    "reviewSignals": [
+      "docs:not-applicable",
+      "docs:rejected"
     ]
   },
   "board": {
