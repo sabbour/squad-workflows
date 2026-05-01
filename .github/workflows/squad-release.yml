@@ -20,7 +20,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci
 
@@ -38,20 +39,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Publish to npmjs using OIDC trusted publishing.
-      # Runner's npm 10.9.x doesn't support OIDC — use npx to run npm 11.5+
-      - name: Publish to npmjs (OIDC trusted publishing)
+      # Publish to npmjs using OIDC trusted publishing (no token needed).
+      # Requires Node 24+ / npm 11.5.1+ per https://docs.npmjs.com/trusted-publishers
+      - name: Publish to npmjs
         if: github.ref == 'refs/heads/main'
         id: publish-npm
         run: |
+          echo "node $(node --version) / npm $(npm --version)"
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           PUBLISHED=$(npm view @sabbour/squad-workflows versions --json 2>/dev/null || echo "[]")
           if echo "$PUBLISHED" | grep -q "\"$LOCAL_VERSION\""; then
             echo "v$LOCAL_VERSION already published, skipping."
             echo "published=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Publishing @sabbour/squad-workflows@$LOCAL_VERSION with npm@latest..."
-            npx npm@latest publish --provenance --access public
+            echo "Publishing @sabbour/squad-workflows@$LOCAL_VERSION..."
+            npm publish --access public
             echo "published=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -61,7 +63,7 @@ jobs:
         if: steps.publish-npm.outputs.published == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '24'
           registry-url: https://npm.pkg.github.com
 
       - name: Publish to GitHub Packages
