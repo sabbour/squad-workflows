@@ -59,6 +59,7 @@ Commands:
   wave-status       Show wave/milestone progress
   merge-check       Pre-merge validation for a PR
   fast-lane         Check fast-lane eligibility
+  upgrade           Upgrade this CLI to the latest version
   release-wave      Release a completed wave (version + close milestone)
   scaffold-release  Scaffold changeset release workflow into .github/workflows/
 
@@ -118,6 +119,10 @@ async function run() {
     case 'fast-lane': {
       const { runFastLane } = await import(`${LIB_DIR}/fast-lane.mjs`);
       return runFastLane(repoRoot, values);
+    }
+    case 'upgrade': {
+      const { runUpgrade } = await import(`${LIB_DIR}/upgrade.mjs`);
+      return runUpgrade();
     }
     case 'release-wave': {
       const { runReleaseWave } = await import(`${LIB_DIR}/release-wave.mjs`);

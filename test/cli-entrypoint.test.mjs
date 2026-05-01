@@ -34,6 +34,7 @@ test('prints help with --help', () => {
   assert.match(output, /init/);
   assert.match(output, /doctor/);
   assert.match(output, /estimate/);
+  assert.match(output, /upgrade/);
 });
 
 test('prints help with no command', () => {
