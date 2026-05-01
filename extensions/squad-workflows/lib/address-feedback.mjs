@@ -19,6 +19,7 @@ const BATCH_FEEDBACK_INSTRUCTION = [
   'Do not push one commit per thread; repeated synchronize events create notification noise and can repeatedly invalidate approvals/rebases.',
   'After pushing the batch commit, post one consolidated PR comment summarizing the fixes and commit SHA when possible.',
   'Resolve individual review threads only after the batch commit exists; replies may reference the consolidated summary and must still satisfy the reviewer thread contract.',
+  'After all threads are resolved, check PR reviewDecision; if it is still CHANGES_REQUESTED, ping the human reviewer for re-review/dismissal, and separately submit any required Squad role-gate approval with squad_reviews_execute_pr_review.',
 ].join(' ');
 
 function inferCategory(login) {
@@ -35,7 +36,19 @@ function extractSuggestion(body) {
   return matches.length > 0 ? matches.join('\n') : null;
 }
 
-function buildBatchPlan(threads) {
+function buildClosurePlan({ reviewDecision, totalThreads }) {
+  return {
+    check: 'After resolving every thread, check PR reviewDecision.',
+    reviewDecision,
+    humanReReview: reviewDecision === 'CHANGES_REQUESTED'
+      ? 'If reviewDecision remains CHANGES_REQUESTED after thread resolution, ping the human reviewer for re-review or dismissal.'
+      : 'No human CHANGES_REQUESTED decision is currently reported; re-check after thread resolution.',
+    roleGateApproval: 'Thread resolution and human dismissal do not satisfy Squad role gates. Submit required role-gate approval separately with squad_reviews_execute_pr_review.',
+    readyAfterThreads: totalThreads === 0 && reviewDecision !== 'CHANGES_REQUESTED',
+  };
+}
+
+function buildBatchPlan(threads, reviewDecision = null) {
   const byCategory = {};
   const byReviewer = {};
   const byPath = {};
@@ -57,6 +70,7 @@ function buildBatchPlan(threads) {
     byCategory,
     byReviewer,
     byPath,
+    closure: buildClosurePlan({ reviewDecision, totalThreads: threads.length }),
   };
 }
 
@@ -65,6 +79,7 @@ const PR_FEEDBACK_QUERY = `query($owner: String!, $repo: String!, $pr: Int!) {
     pullRequest(number: $pr) {
       title
       author { login }
+      reviewDecision
       reviews(last: 50) {
         nodes {
           author { login }
@@ -137,7 +152,9 @@ async function fetchPRFeedback(owner, repo, pr, token) {
     author: pullRequest.author?.login || 'unknown',
     totalThreads: threads.length,
     threads,
-    batchPlan: buildBatchPlan(threads),
+    reviewDecision: pullRequest.reviewDecision ?? null,
+    batchPlan: buildBatchPlan(threads, pullRequest.reviewDecision ?? null),
+    closurePlan: buildClosurePlan({ reviewDecision: pullRequest.reviewDecision ?? null, totalThreads: threads.length }),
     summary,
   };
 }
@@ -203,6 +220,7 @@ export async function runAddressAllFeedback(repoRoot, { prs, token, owner, repo,
       instruction: BATCH_FEEDBACK_INSTRUCTION,
       implementation: 'For each PR, batch all related feedback into one implementation pass, one validation run, and one commit.',
       comment: 'Prefer one consolidated PR comment/update per PR before resolving individual threads.',
+      closure: 'After all threads resolve, check reviewDecision; CHANGES_REQUESTED still requires a human re-review/dismissal ping, and role-gate approval must be submitted separately with squad_reviews_execute_pr_review.',
     },
     byCategory,
     byReviewer,

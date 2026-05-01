@@ -6,7 +6,9 @@ import { getReviewThreads, getPR, getCheckRuns, getCommitStatus } from './github
 
 export async function runCheckFeedback(repoRoot, { pr, token, owner, repo }) {
   const threadData = await getReviewThreads(owner, repo, pr, token);
-  const threads = threadData?.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+  const pullRequest = threadData?.data?.repository?.pullRequest || {};
+  const threads = pullRequest.reviewThreads?.nodes || [];
+  const reviewDecision = pullRequest.reviewDecision ?? null;
 
   const unresolved = threads
     .filter((t) => !t.isResolved)
@@ -31,10 +33,21 @@ export async function runCheckFeedback(repoRoot, { pr, token, owner, repo }) {
     resolved,
     unresolved: unresolved.length,
     threads: unresolved,
-    readyToMerge: unresolved.length === 0,
+    readyToMerge: unresolved.length === 0 && reviewDecision !== 'CHANGES_REQUESTED',
+    reviewDecision,
+    closureRule: {
+      allThreadsResolved: unresolved.length === 0,
+      humanReReviewRequired: unresolved.length === 0 && reviewDecision === 'CHANGES_REQUESTED',
+      roleGateApprovalRequired: unresolved.length === 0,
+      instruction: unresolved.length === 0
+        ? 'All threads are resolved. Check PR reviewDecision now. If it is still CHANGES_REQUESTED, ping the human reviewer for re-review/dismissal; separately submit any required Squad role-gate approval with squad_reviews_execute_pr_review.'
+        : 'Address each thread before checking reviewDecision or submitting role-gate approval.',
+    },
     hint: unresolved.length > 0
       ? 'Address each thread: fix → reply → resolve (GraphQL). Use squad_reviews_resolve_thread.'
-      : 'All threads resolved ✓',
+      : reviewDecision === 'CHANGES_REQUESTED'
+        ? 'All threads resolved, but reviewDecision is still CHANGES_REQUESTED: ping the human reviewer for re-review/dismissal and submit Squad role-gate approval separately via squad_reviews_execute_pr_review.'
+        : 'All threads resolved ✓; submit any required Squad role-gate approval through squad_reviews_execute_pr_review.',
   };
 }
 

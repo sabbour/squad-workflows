@@ -240,6 +240,13 @@ export async function getReviewThreads(owner, repo, pr, token) {
   const query = `query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
+        reviewDecision
+        reviews(last: 100) {
+          nodes {
+            state
+            author { login }
+          }
+        }
         reviewThreads(first: 100) {
           nodes {
             id

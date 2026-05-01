@@ -81,6 +81,7 @@ Track review progress:
 - `squad_workflows_check_ci` — checks CI status with failure details
 - Batch all related feedback for a PR into one implementation pass, one validation run, and one commit before pushing.
 - Prefer one consolidated PR comment/update summarizing the batch; then use `squad_reviews_resolve_thread` to close individual threads (reply before resolve!) with concise references to the batch.
+- After all threads are resolved, check PR `reviewDecision`. If it is still `CHANGES_REQUESTED`, ping the human reviewer for re-review/dismissal. Separately submit any required Squad role-gate approval with `squad_reviews_execute_pr_review`.
 
 ### 8) Merge
 

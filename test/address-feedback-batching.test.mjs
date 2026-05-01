@@ -18,7 +18,7 @@ function writeFakeGh(dir) {
     '#!/bin/sh',
     'set -eu',
     'if [ "${2-}" = "graphql" ]; then',
-    `  printf '%s\\n' '{"data":{"repository":{"pullRequest":{"title":"Fix feedback","author":{"login":"author"},"reviews":{"nodes":[{"author":{"login":"squad-security[bot]"},"state":"CHANGES_REQUESTED"}]},"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"lib/security.mjs","line":12,"comments":{"nodes":[{"id":"C1","author":{"login":"squad-security[bot]"},"body":"Tighten validation."}]}},{"id":"T2","isResolved":false,"path":"docs/usage.md","line":5,"comments":{"nodes":[{"id":"C2","author":{"login":"squad-docs[bot]"},"body":"Update docs."}]}}]}}}}}'`,
+    `  printf '%s\\n' '{"data":{"repository":{"pullRequest":{"title":"Fix feedback","author":{"login":"author"},"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"author":{"login":"squad-security[bot]"},"state":"CHANGES_REQUESTED"}]},"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"lib/security.mjs","line":12,"comments":{"nodes":[{"id":"C1","author":{"login":"squad-security[bot]"},"body":"Tighten validation."}]}},{"id":"T2","isResolved":false,"path":"docs/usage.md","line":5,"comments":{"nodes":[{"id":"C2","author":{"login":"squad-docs[bot]"},"body":"Update docs."}]}}]}}}}}'`,
     '  exit 0',
     'fi',
     `printf '%s\\n' '[]'`,
@@ -50,6 +50,9 @@ test('address-feedback returns batched one-pass commit/comment instructions', as
     assert.match(result.batchPlan.instruction, /one implementation pass/i);
     assert.match(result.batchPlan.commit, /one commit/i);
     assert.match(result.batchPlan.comment, /consolidated PR comment/i);
+    assert.match(result.batchPlan.closure.roleGateApproval, /squad_reviews_execute_pr_review/i);
+    assert.equal(result.reviewDecision, 'CHANGES_REQUESTED');
+    assert.equal(result.closurePlan.readyAfterThreads, false);
     assert.deepEqual(result.batchPlan.byCategory, { security: 1, docs: 1 });
   } finally {
     process.env.PATH = previousPath;

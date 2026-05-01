@@ -159,11 +159,12 @@ The loop follows a 9-step sequence:
 2. **Prioritize** — Sort threads by blocker severity and assigned reviewer
 3. **Fix Code** — Implementing agent batches all related feedback into one implementation pass, validates once, and pushes one commit
 4. **Consolidate + Resolve** — Agent posts one consolidated PR update where possible, then replies to and resolves individual threads (`"Addressed in {sha}: {description}"`)
-5. **Re-request** — If review was requested from a specific reviewer, re-request it
-6. **Merge Gate** — Call `merge_check` to validate all gates (approvals, threads, CI, changeset)
-7. **Branch Behind** — If base branch moved, call `update_branch` to sync
-8. **Next PR** — After merge, loop to the next open PR
-9. **Wave Boundary** — When all PRs in a wave are merged, call `release_wave`
+5. **Two-step closure** — Check PR `reviewDecision`; if it is still `CHANGES_REQUESTED`, ping the human reviewer for re-review/dismissal. Separately submit required Squad role-gate approval with `squad_reviews_execute_pr_review`.
+6. **Re-request** — If review was requested from a specific reviewer, re-request it
+7. **Merge Gate** — Call `merge_check` to validate all gates (approvals, threads, CI, changeset)
+8. **Branch Behind** — If base branch moved, call `update_branch` to sync
+9. **Next PR** — After merge, loop to the next open PR
+10. **Wave Boundary** — When all PRs in a wave are merged, call `release_wave`
 
 > **Note on identity:** Thread replies use the **PR author's bot identity** (not Ralph's). This is enforced by `squad-identity` to ensure feedback replies are attributed to the agent who wrote the code. Related skills: `pr-feedback-loop`, `reviewer-protocol`, `gh-auth-isolation`, `self-approval-fallback`, `git-workflow`.
 
