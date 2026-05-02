@@ -6,6 +6,7 @@
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureLabel } from './github-api.mjs';
@@ -56,6 +57,29 @@ const LABEL_DESCRIPTIONS = {
 
 const INSTRUCTIONS_MARKER_START = '<!-- squad-workflows: start -->';
 const INSTRUCTIONS_MARKER_END = '<!-- squad-workflows: end -->';
+const INSTRUCTIONS_MARKER_START_RE = /<!--\s*squad-workflows:\s*start(?:\s+v([^\s>-]+))?\s*-->/;
+
+function readPackageVersion() {
+  try {
+    const pkgUrl = new URL('../../../package.json', import.meta.url);
+    return JSON.parse(readFileSync(fileURLToPath(pkgUrl), 'utf-8')).version;
+  } catch {
+    return null;
+  }
+}
+
+function buildStartMarker() {
+  const v = readPackageVersion();
+  return v ? `<!-- squad-workflows: start v${v} -->` : INSTRUCTIONS_MARKER_START;
+}
+
+export function readInstalledWorkflowsVersion(content) {
+  if (!content) return null;
+  const m = content.match(INSTRUCTIONS_MARKER_START_RE);
+  return m && m[1] ? m[1] : null;
+}
+
+export { INSTRUCTIONS_MARKER_START_RE };
 
 export async function runInit(repoRoot, { token, owner, repo, force }) {
   const results = { labels: [], config: null, instructions: [] };
@@ -102,11 +126,11 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
   // 3. Patch copilot-instructions.md
   const instrPath = join(repoRoot, '.github', 'copilot-instructions.md');
   if (existsSync(instrPath)) {
-    const patched = patchInstructionBlock(
-      readFileSync(instrPath, 'utf-8'),
-      buildInstructionBlock(config)
-    );
+    const before = readFileSync(instrPath, 'utf-8');
+    results.previousVersion = readInstalledWorkflowsVersion(before);
+    const patched = patchInstructionBlock(before, buildInstructionBlock(config));
     writeFileSync(instrPath, patched);
+    results.newVersion = readInstalledWorkflowsVersion(patched);
     results.instructions.push('copilot-instructions.md patched');
   }
 
@@ -166,7 +190,7 @@ export async function runInit(repoRoot, { token, owner, repo, force }) {
 }
 
 export function buildInstructionBlock(config) {
-  return `${INSTRUCTIONS_MARKER_START}
+  return `${buildStartMarker()}
 ## Workflow Tools (squad-workflows extension)
 
 Use these tools for the issue-to-merge lifecycle:
@@ -196,7 +220,7 @@ ${INSTRUCTIONS_MARKER_END}`;
 }
 
 export function buildRalphCharterBlock() {
-  return `${INSTRUCTIONS_MARKER_START}
+  return `${buildStartMarker()}
 ## PR Feedback Loop (squad-workflows)
 
 **Goal:** Clear the board — get every open squad PR merged and every assigned issue completed. This is Ralph's primary objective when active. The board is clear when there are 0 open PRs from squad bots and 0 open issues with \`squad:*\` labels.
@@ -235,7 +259,7 @@ ${INSTRUCTIONS_MARKER_END}`;
 }
 
 export function buildAgentCharterBlock() {
-  return `${INSTRUCTIONS_MARKER_START}
+  return `${buildStartMarker()}
 ## Workflow Rules (squad-workflows)
 
 ### Pre-Push Validation
@@ -246,7 +270,7 @@ ${INSTRUCTIONS_MARKER_END}`;
 export function buildCeremoniesBlock(config) {
   const fastLaneLabels = config.designProposal.fastLaneLabels.map(l => '`' + l + '`').join(' or ');
   const approvals = config.labels.designApprovals.map(l => '`' + l + '`').join(', ');
-  return `${INSTRUCTIONS_MARKER_START}
+  return `${buildStartMarker()}
 ### Planning Ceremony (squad-workflows)
 
 | Step | Tool | Gate |
@@ -288,7 +312,7 @@ ${INSTRUCTIONS_MARKER_END}`;
 }
 
 export function buildLifecycleOverrideBlock() {
-  return `${INSTRUCTIONS_MARKER_START}
+  return `${buildStartMarker()}
 > **⚠️ This project uses squad-workflows.** The step-by-step commands in
 > sections 1–7 below are superseded by the squad-workflows extension tools.
 > Follow these references instead:
@@ -302,11 +326,11 @@ ${INSTRUCTIONS_MARKER_END}`;
 }
 
 export function patchInstructionBlock(content, block) {
-  const startIdx = content.indexOf(INSTRUCTIONS_MARKER_START);
+  const startMatch = content.match(INSTRUCTIONS_MARKER_START_RE);
   const endIdx = content.indexOf(INSTRUCTIONS_MARKER_END);
 
-  if (startIdx !== -1 && endIdx !== -1) {
-    return content.slice(0, startIdx) + block + content.slice(endIdx + INSTRUCTIONS_MARKER_END.length);
+  if (startMatch && endIdx !== -1 && endIdx > startMatch.index) {
+    return content.slice(0, startMatch.index) + block + content.slice(endIdx + INSTRUCTIONS_MARKER_END.length);
   }
 
   return content.trimEnd() + '\n\n' + block + '\n';
