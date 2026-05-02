@@ -140,13 +140,20 @@ export function getExemptReviews(config, changedPaths) {
 
 /**
  * Simple glob matching (supports ** and * wildcards).
+ * Escape regex metacharacters by splitting on wildcards so that literal
+ * segments are escaped before being joined with their regex equivalents.
  */
-function matchGlob(filePath, pattern) {
-  const regex = pattern
-    .replace(/\*\*/g, '{{GLOBSTAR}}')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\{\{GLOBSTAR\}\}/g, '.*');
-  return new RegExp(`^${regex}$`).test(filePath);
+export function matchGlob(filePath, pattern) {
+  const escaped = pattern
+    .split('**')
+    .map(seg =>
+      seg
+        .split('*')
+        .map(s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+        .join('[^/]*')
+    )
+    .join('.*');
+  return new RegExp(`^${escaped}$`).test(filePath);
 }
 
 function deepMerge(target, source) {
