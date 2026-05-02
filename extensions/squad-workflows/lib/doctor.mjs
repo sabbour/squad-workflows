@@ -26,7 +26,7 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
   const instrPath = join(repoRoot, '.github', 'copilot-instructions.md');
   if (existsSync(instrPath)) {
     const content = readFileSync(instrPath, 'utf-8');
-    const hasBlock = content.includes('<!-- squad-workflows: start -->');
+    const hasBlock = /<!--\s*squad-workflows:\s*start(?:\s+v[^\s>-]+)?\s*-->/.test(content);
     checks.push({
       check: 'copilot-instructions',
       status: hasBlock ? 'pass' : 'warn',
@@ -40,7 +40,7 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
   const ceremoniesPath = join(repoRoot, '.squad', 'ceremonies.md');
   if (existsSync(ceremoniesPath)) {
     const content = readFileSync(ceremoniesPath, 'utf-8');
-    const hasBlock = content.includes('<!-- squad-workflows: start -->');
+    const hasBlock = /<!--\s*squad-workflows:\s*start(?:\s+v[^\s>-]+)?\s*-->/.test(content);
     checks.push({
       check: 'ceremonies',
       status: hasBlock ? 'pass' : 'warn',
@@ -52,7 +52,7 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
   const ralphCharterPath = join(repoRoot, '.squad', 'agents', 'ralph', 'charter.md');
   if (existsSync(ralphCharterPath)) {
     const content = readFileSync(ralphCharterPath, 'utf-8');
-    const hasBlock = content.includes('<!-- squad-workflows: start -->');
+    const hasBlock = /<!--\s*squad-workflows:\s*start(?:\s+v[^\s>-]+)?\s*-->/.test(content);
     checks.push({
       check: 'ralph-charter',
       status: hasBlock ? 'pass' : 'warn',
@@ -64,7 +64,7 @@ export async function runDoctor(repoRoot, { token, owner, repo } = {}) {
   const lifecyclePath = join(repoRoot, '.squad', 'issue-lifecycle.md');
   if (existsSync(lifecyclePath)) {
     const content = readFileSync(lifecyclePath, 'utf-8');
-    const hasBlock = content.includes('<!-- squad-workflows: start -->');
+    const hasBlock = /<!--\s*squad-workflows:\s*start(?:\s+v[^\s>-]+)?\s*-->/.test(content);
     checks.push({
       check: 'issue-lifecycle',
       status: hasBlock ? 'pass' : 'warn',

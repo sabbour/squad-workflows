@@ -40,8 +40,12 @@ export async function runUpgrade() {
 
   if (installMode === 'npx') {
     const latestVersion = getLatestVersion(PACKAGE_NAME);
-    console.log(`Running via npx. Re-run with: npx ${PACKAGE_NAME}@latest upgrade`);
-    console.log(`Latest version: ${latestVersion}`);
+    if (latestVersion === currentVersion) {
+      console.log(`✅ Already on latest (${currentVersion}) via npx.`);
+    } else {
+      console.log(`⬆️  Update available: ${currentVersion} → ${latestVersion}`);
+      console.log(`Re-run with: npx ${PACKAGE_NAME}@latest upgrade`);
+    }
     return;
   }
 
@@ -50,7 +54,12 @@ export async function runUpgrade() {
   try {
     execFileSync(NPM_COMMAND, ['install', '-g', `${PACKAGE_NAME}@latest`], { stdio: 'inherit' });
     const newVersion = getGlobalInstalledVersion(PACKAGE_NAME);
-    console.log(`✅ Upgraded to ${newVersion}`);
+    if (newVersion === currentVersion) {
+      console.log(`✅ Already on latest: ${newVersion}`);
+    } else {
+      console.log(`✅ Upgraded ${PACKAGE_NAME}: ${currentVersion} → ${newVersion}`);
+    }
+    console.log(`ℹ️  Re-run \`squad-workflows setup\` in each target repo to pick up new workflow/instruction changes.`);
   } catch {
     throw new Error(`Upgrade failed. Try manually: npm install -g ${PACKAGE_NAME}@latest`);
   }

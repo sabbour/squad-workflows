@@ -201,7 +201,16 @@ The `squad-workflows init` and `squad-workflows setup` commands patch **two file
 1. `.github/copilot-instructions.md` — Injects the Workflow Tools reference section so agents discover the entire toolkit
 2. `.squad/agents/ralph/charter.md` — Injects a `<!-- squad-workflows: start/end -->` block containing the PR Feedback Loop protocol (the 9-step playbook Ralph uses to clear the board)
 
-The `squad-workflows doctor` health check verifies both patches are present and current.
+The `squad-workflows doctor` health check verifies both patches are present, current, and version-stamped (alongside labels and config).
+
+## Upgrading
+
+```bash
+npm install -g @sabbour/squad-workflows@latest
+squad-workflows upgrade
+```
+
+The `upgrade` command shows a from→to summary (e.g. `v1.3.1 → v1.4.0`), refreshes the installed extension files, the SKILL.md, and re-injects the version-stamped managed blocks into `.github/copilot-instructions.md`, `.squad/agents/ralph/charter.md`, and any scaffolded workflows in `.github/workflows/`. Run `squad-workflows doctor` to verify all injected artifacts.
 
 ## Tools
 
